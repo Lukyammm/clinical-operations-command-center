@@ -988,13 +988,32 @@
     function formatNumberBR(value) { return Number(value).toLocaleString('pt-BR', { maximumFractionDigits: 1 }); }
     function resolvePeriodoLabel(item) {
       if (!item || typeof item !== 'object') return '';
-      const candidates = [item.COMPETENCIA, item.PERIODO, item.PERIODO_REFERENCIA, item.REFERENCIA, item.MES_ANO];
-      const explicit = candidates.find(v => String(v || '').trim());
-      if (explicit) return String(explicit).trim();
 
-      const dateCandidates = [item.DATA, item.DATA_REFERENCIA, item.CREATED_AT];
+      const normalizeKey = (v) => String(v || '')
+        .normalize('NFD')
+        .replace(/[̀-ͯ]/g, '')
+        .replace(/[^A-Z0-9]/gi, '')
+        .toUpperCase();
+
+      const getByAliases = (aliases) => {
+        const aliasSet = new Set(aliases.map(normalizeKey));
+        const key = Object.keys(item).find(k => aliasSet.has(normalizeKey(k)));
+        const value = key ? item[key] : '';
+        return String(value || '').trim();
+      };
+
+      const explicit = getByAliases([
+        'COMPETENCIA', 'COMPETÊNCIA', 'PERIODO', 'PERÍODO', 'PERIODO_REFERENCIA',
+        'PERÍODO_REFERÊNCIA', 'REFERENCIA', 'REFERÊNCIA', 'MES_ANO', 'MÊS_ANO',
+        'MESANO', 'MÊSANO', 'ANO_MES', 'ANO-MES'
+      ]);
+      if (explicit) return explicit;
+
+      const dateCandidates = [
+        getByAliases(['DATA', 'DATA_REFERENCIA', 'DATA_REFERÊNCIA', 'CREATED_AT', 'CRIADO_EM'])
+      ].filter(Boolean);
+
       for (const raw of dateCandidates) {
-        if (!raw) continue;
         const parsed = new Date(raw);
         if (!Number.isNaN(parsed.getTime())) {
           return parsed.toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' });
