@@ -37,7 +37,17 @@ const SIGEP = {
     unidades: 'BASE_UNIDADES',
     usuarios: 'USUARIOS',
     historico: 'HISTORICO',
-    dashboardBase: 'DASHBOARD_BASE'
+    dashboardBase: 'DASHBOARD_BASE',
+    backups: 'BACKUPS_LOGICOS'
+  },
+  operations: {
+    adminEmails: [],
+    dailyJobHour: 6
+  },
+  appConfig: {
+    sheet: 'CONFIG_APP',
+    schemaVersionKey: 'SCHEMA_VERSION',
+    defaultSchemaVersion: 1
   }
 };
 
@@ -91,6 +101,16 @@ function runBasesHealthCheckJob() {
   return app.runBasesHealthCheck();
 }
 
+function setupPhase1Automation() {
+  const app = new SigepApplication();
+  return app.setupPhase1Automation();
+}
+
+function runDailyOperationalGuardJob() {
+  const app = new SigepApplication();
+  return app.runDailyOperationalGuardJob();
+}
+
 function getProcessosPage(payload) {
   const app = new SigepApplication();
   return app.getProcessosPage(payload);
@@ -106,15 +126,42 @@ function getIndicadoresPage(payload) {
   return app.getIndicadoresPage(payload);
 }
 
+function atualizarEmLote(payload) {
+  return runWithWriteLock_(() => withWritePermission_('GERAL', app => app.runBulkUpdate(payload)));
+}
+
+function getPainelPendencias(payload) {
+  const app = new SigepApplication();
+  return app.getPainelPendencias(payload);
+}
+
+function salvarFiltroAvancado(payload) {
+  return withWritePermission_('GERAL', app => app.salvarFiltroAvancado(payload));
+}
+
+function listarFiltrosAvancados() {
+  const app = new SigepApplication();
+  return app.listarFiltrosAvancados();
+}
+
+function getAppConfig() {
+  const app = new SigepApplication();
+  return app.getAppConfig();
+}
+
+function runSchemaMigrations() {
+  return runWithWriteLock_(() => withAdminPermission_('ADMIN', app => app.runSchemaMigrations()));
+}
+
 function withWritePermission_(screenName, callback) {
   const app = new SigepApplication();
-  app.auth.assertCanWrite(screenName || 'GERAL');
+  app.auth.assertAuthorized(screenName || 'GERAL', 'EDITAR');
   return callback(app);
 }
 
 function withAdminPermission_(screenName, callback) {
   const app = new SigepApplication();
-  app.auth.assertIsAdmin(screenName || 'ADMIN');
+  app.auth.assertAuthorized(screenName || 'ADMIN', 'ADMIN');
   return callback(app);
 }
 
@@ -191,16 +238,17 @@ class SigepApplication {
     if (cached) return JSON.parse(cached);
 
     const featureFlags = this.repo.getFeatureFlags();
-    const processos = featureFlags.PROCESSOS ? this.processos.list() : [];
-    const acompanhamento = featureFlags.ACOMPANHAMENTO ? this.acompanhamento.list() : [];
-    const indicadores = featureFlags.INDICADORES ? this.indicadores.list() : [];
+    const user = this.auth.getCurrentUser();
+    const processos = featureFlags.PROCESSOS ? this.auth.applyDataScope(this.processos.list(), user) : [];
+    const acompanhamento = featureFlags.ACOMPANHAMENTO ? this.auth.applyDataScope(this.acompanhamento.list(), user) : [];
+    const indicadores = featureFlags.INDICADORES ? this.auth.applyDataScope(this.indicadores.list(), user) : [];
     const lancamentos = featureFlags.INDICADORES ? this.indicadores.listLancamentos() : [];
     const unidades = this.repo.getObjects(SIGEP.sheets.unidades);
     const result = {
       ok: true,
       generatedAt: new Date().toISOString(),
       generatedAtLocal: this.repo.formatDatePtBr(new Date()),
-      user: Session.getActiveUser().getEmail() || '',
+      user: user.email || '',
       dashboard: this.dashboard.build(processos, acompanhamento, indicadores, lancamentos),
       processos,
       acompanhamento,
@@ -223,22 +271,65 @@ class SigepApplication {
 
   getProcessosPage(payload) {
     if (!this.repo.getFeatureFlag('PROCESSOS')) return { ok: true, data: [], page: 1, pageSize: 50, total: 0, totalPages: 1 };
-    return this.repo.paginate(this.processos.list(), payload);
+    const user = this.auth.getCurrentUser();
+    return this.repo.paginate(this.auth.applyDataScope(this.processos.list(), user), payload);
   }
 
   getAcompanhamentoPage(payload) {
     if (!this.repo.getFeatureFlag('ACOMPANHAMENTO')) return { ok: true, data: [], page: 1, pageSize: 50, total: 0, totalPages: 1 };
-    return this.repo.paginate(this.acompanhamento.list(), payload);
+    const user = this.auth.getCurrentUser();
+    return this.repo.paginate(this.auth.applyDataScope(this.acompanhamento.list(), user), payload);
   }
 
   getIndicadoresPage(payload) {
     if (!this.repo.getFeatureFlag('INDICADORES')) return { ok: true, data: [], page: 1, pageSize: 50, total: 0, totalPages: 1 };
-    return this.repo.paginate(this.indicadores.list(), payload);
+    const user = this.auth.getCurrentUser();
+    return this.repo.paginate(this.auth.applyDataScope(this.indicadores.list(), user), payload);
   }
 
   runBasesHealthCheck() {
     const checker = new BaseHealthService(this.repo, this.audit);
     return checker.run();
+  }
+
+  setupPhase1Automation() {
+    const ops = new OperationalHardeningService(this.repo, this.audit);
+    return ops.setupDailyAutomation();
+  }
+
+  runDailyOperationalGuardJob() {
+    const ops = new OperationalHardeningService(this.repo, this.audit);
+    return ops.runDailyGuard();
+  }
+
+  runBulkUpdate(payload) {
+    const ops = new ProductivityService(this.repo, this.audit, this.auth);
+    return ops.runBulkUpdate(payload);
+  }
+
+  getPainelPendencias(payload) {
+    const ops = new ProductivityService(this.repo, this.audit, this.auth);
+    return ops.getPainelPendencias(payload);
+  }
+
+  salvarFiltroAvancado(payload) {
+    const ops = new ProductivityService(this.repo, this.audit, this.auth);
+    return ops.salvarFiltroAvancado(payload);
+  }
+
+  listarFiltrosAvancados() {
+    const ops = new ProductivityService(this.repo, this.audit, this.auth);
+    return ops.listarFiltrosAvancados();
+  }
+
+  getAppConfig() {
+    const cfg = new ConfigService(this.repo, this.audit, this.auth);
+    return cfg.getPublicConfig();
+  }
+
+  runSchemaMigrations() {
+    const cfg = new ConfigService(this.repo, this.audit, this.auth);
+    return cfg.runMigrations();
   }
 }
 
@@ -676,6 +767,310 @@ class BaseHealthService {
   }
 }
 
+class OperationalHardeningService {
+  constructor(repo, audit) {
+    this.repo = repo;
+    this.audit = audit;
+  }
+
+  setupDailyAutomation() {
+    this.ensureBackupSheet_();
+    this.protectBaseSheets_();
+    const triggerCreated = this.ensureDailyTrigger_();
+    this.audit.log('PHASE1_SETUP', 'AUTOMACAO', triggerCreated ? 'TRIGGER_CRIADO' : 'TRIGGER_EXISTENTE', 'Fase 1 configurada');
+    return { ok: true, triggerCreated };
+  }
+
+  runDailyGuard() {
+    this.ensureBackupSheet_();
+    this.protectBaseSheets_();
+    const health = new BaseHealthService(this.repo, this.audit).run();
+    const backup = this.createLogicalBackup_();
+    if (health.findings && health.findings.length) {
+      this.sendHealthAlertEmail_(health, backup);
+    }
+    return { ok: true, health, backup };
+  }
+
+  ensureDailyTrigger_() {
+    const fnName = 'runDailyOperationalGuardJob';
+    const exists = ScriptApp.getProjectTriggers().some(t => t.getHandlerFunction() === fnName);
+    if (exists) return false;
+    ScriptApp.newTrigger(fnName)
+      .timeBased()
+      .everyDays(1)
+      .atHour(SIGEP.operations.dailyJobHour)
+      .create();
+    return true;
+  }
+
+  protectBaseSheets_() {
+    const baseNames = Object.values(SIGEP.sheets).filter(name => String(name).indexOf('BASE_') === 0);
+    const ownerEmail = Session.getEffectiveUser().getEmail();
+    baseNames.forEach(sheetName => {
+      const sh = this.repo.getSheet(sheetName);
+      const protections = sh.getProtections(SpreadsheetApp.ProtectionType.SHEET);
+      const managedDescription = '[SIGEP] PROTECAO_BASE_WEBAPP';
+      const alreadyManaged = protections.find(p => p.getDescription() === managedDescription);
+      if (alreadyManaged) return;
+      const protection = sh.protect().setDescription(managedDescription);
+      protection.setWarningOnly(false);
+      protection.removeEditors(protection.getEditors());
+      if (ownerEmail) protection.addEditor(ownerEmail);
+    });
+  }
+
+  ensureBackupSheet_() {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    let sh = ss.getSheetByName(SIGEP.sheets.backups);
+    if (!sh) {
+      sh = ss.insertSheet(SIGEP.sheets.backups);
+      sh.getRange(1, 1, 1, 4).setValues([['DATA_EXECUCAO', 'RESUMO_JSON', 'QTD_FINDINGS', 'SEVERIDADE']]);
+    }
+    return sh;
+  }
+
+  createLogicalBackup_() {
+    const payload = {
+      generatedAt: new Date().toISOString(),
+      generatedAtLocal: this.repo.formatDateOperational(new Date()),
+      BASE_PROCESSOS: this.repo.getObjects(SIGEP.sheets.processos),
+      BASE_ACOMPANHAMENTO: this.repo.getObjects(SIGEP.sheets.acompanhamento),
+      BASE_INDICADORES: this.repo.getObjects(SIGEP.sheets.indicadores),
+      BASE_LANCAMENTOS_INDICADORES: this.repo.getObjects(SIGEP.sheets.lancamentos),
+      BASE_UNIDADES: this.repo.getObjects(SIGEP.sheets.unidades)
+    };
+    const summary = {
+      generatedAt: payload.generatedAt,
+      generatedAtLocal: payload.generatedAtLocal,
+      counts: Object.keys(payload).filter(k => k.indexOf('BASE_') === 0).reduce((acc, key) => {
+        acc[key] = payload[key].length;
+        return acc;
+      }, {})
+    };
+    const sh = this.ensureBackupSheet_();
+    sh.appendRow([payload.generatedAtLocal, JSON.stringify(summary), 0, 'OK']);
+    return summary;
+  }
+
+  sendHealthAlertEmail_(health, backup) {
+    const recipients = this.resolveAdminEmails_();
+    if (!recipients.length) return;
+    const subject = '[SIGEP-HUC] Alerta crítico de integridade das bases';
+    const body = [
+      'Foram encontradas inconsistências no health check diário.',
+      '',
+      'Data: ' + this.repo.formatDateOperational(new Date()),
+      'Severidade: ' + health.severity,
+      'Quantidade de achados: ' + health.findings.length,
+      'Resumo do backup: ' + JSON.stringify(backup.counts),
+      '',
+      'Primeiros achados:',
+      JSON.stringify(health.findings.slice(0, 15), null, 2)
+    ].join('\n');
+    MailApp.sendEmail(recipients.join(','), subject, body);
+    this.audit.log('EMAIL_ALERTA_HEALTHCHECK', 'BASES', recipients.join(','), 'Alerta de saúde enviado');
+  }
+
+  resolveAdminEmails_() {
+    const fromUsers = this.repo.getObjectsSafe(SIGEP.sheets.usuarios, [])
+      .filter(u => String(u.ATIVO || '').toUpperCase() === 'SIM' && String(u.PERFIL || '').toUpperCase() === 'ADMIN')
+      .map(u => String(u.EMAIL || '').trim().toLowerCase())
+      .filter(Boolean);
+    const fromConfig = (SIGEP.operations.adminEmails || []).map(e => String(e || '').trim().toLowerCase()).filter(Boolean);
+    return [...new Set(fromUsers.concat(fromConfig))];
+  }
+}
+
+class ProductivityService {
+  constructor(repo, audit, auth) {
+    this.repo = repo;
+    this.audit = audit;
+    this.auth = auth;
+  }
+
+  runBulkUpdate(payload) {
+    const data = payload || {};
+    const modulo = String(data.modulo || '').toUpperCase();
+    const updates = Array.isArray(data.updates) ? data.updates : [];
+    if (!updates.length) throw new Error('Nenhuma atualização enviada para operação em lote.');
+    const reason = String(data.motivo || '').trim();
+    if (!reason) throw new Error('Motivo é obrigatório para atualização em lote.');
+    let success = 0;
+    const errors = [];
+    updates.forEach((u, index) => {
+      try {
+        if (modulo === 'PROCESSOS') {
+          const service = new ProcessoService(this.repo, this.audit);
+          service.update({ ...u, MOTIVO_ALTERACAO: reason });
+        } else if (modulo === 'ACOMPANHAMENTO') {
+          const service = new AcompanhamentoService(this.repo, this.audit);
+          service.updateStatus({ ...u, MOTIVO_ALTERACAO: reason });
+        } else if (modulo === 'INDICADORES') {
+          const service = new IndicadorService(this.repo, this.audit);
+          service.update({ ...u, MOTIVO_ALTERACAO: reason });
+        } else {
+          throw new Error('Módulo não suportado para lote: ' + modulo);
+        }
+        success++;
+      } catch (err) {
+        errors.push({ index, error: err.message });
+      }
+    });
+    return { ok: errors.length === 0, modulo, total: updates.length, success, errors };
+  }
+
+  getPainelPendencias(payload) {
+    const limiteDias = Math.max(1, Number(payload && payload.limiteDiasSemAtualizacao || 7));
+    const now = new Date();
+    const acompanhamento = this.auth.applyDataScope(
+      this.repo.getObjects(SIGEP.sheets.acompanhamento).map(DomainNormalizer.acompanhamento.bind(DomainNormalizer))
+    );
+    const pendencias = acompanhamento.map(row => {
+      const status = String(row.STATUS_AGENDAMENTO || '').toUpperCase();
+      const data = row.DATA_AGENDAMENTO ? new Date(row.DATA_AGENDAMENTO) : null;
+      const diasSemAtualizacao = data && !isNaN(data.getTime()) ? Math.floor((now.getTime() - data.getTime()) / 86400000) : null;
+      return {
+        id: row.ID_ACOMPANHAMENTO,
+        unidade: row.UNIDADE || '',
+        status: row.STATUS_AGENDAMENTO || '',
+        progresso: Number(row.PROGRESSO_PERCENTUAL || 0),
+        diasSemAtualizacao,
+        emAtraso: status.includes('ATRAS') || (diasSemAtualizacao !== null && diasSemAtualizacao > limiteDias),
+        semAtualizacaoCritica: diasSemAtualizacao !== null && diasSemAtualizacao > limiteDias
+      };
+    });
+    const atrasados = pendencias.filter(x => x.emAtraso);
+    const semAtualizacaoCritica = pendencias.filter(x => x.semAtualizacaoCritica);
+    const baixoProgresso = pendencias.filter(x => x.progresso < 50);
+    return {
+      ok: true,
+      total: pendencias.length,
+      resumo: {
+        atrasados: atrasados.length,
+        semAtualizacaoCritica: semAtualizacaoCritica.length,
+        baixoProgresso: baixoProgresso.length
+      },
+      itens: pendencias.sort((a, b) => Number(b.emAtraso) - Number(a.emAtraso) || (b.diasSemAtualizacao || 0) - (a.diasSemAtualizacao || 0))
+    };
+  }
+
+  salvarFiltroAvancado(payload) {
+    const user = this.auth.getCurrentUser();
+    const name = String(payload && payload.nome || '').trim();
+    const filtros = payload && payload.filtros;
+    if (!name) throw new Error('Nome do filtro é obrigatório.');
+    if (!filtros || typeof filtros !== 'object') throw new Error('Filtros inválidos.');
+    const key = ['sigep:filtros', user.email, name].join(':');
+    PropertiesService.getUserProperties().setProperty(key, JSON.stringify({ nome: name, filtros, updatedAt: new Date().toISOString() }));
+    return { ok: true, nome: name };
+  }
+
+  listarFiltrosAvancados() {
+    const user = this.auth.getCurrentUser();
+    const prefix = ['sigep:filtros', user.email, ''].join(':');
+    const all = PropertiesService.getUserProperties().getProperties();
+    const list = Object.keys(all)
+      .filter(k => k.indexOf(prefix) === 0)
+      .map(k => JSON.parse(all[k]))
+      .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
+    return { ok: true, filtros: list };
+  }
+}
+
+class ConfigService {
+  constructor(repo, audit, auth) {
+    this.repo = repo;
+    this.audit = audit;
+    this.auth = auth;
+  }
+
+  getPublicConfig() {
+    const currentVersion = this.getCurrentSchemaVersion_();
+    return {
+      ok: true,
+      schemaVersion: currentVersion,
+      targetVersion: this.getTargetSchemaVersion_(),
+      timezone: SIGEP.timezones.operational,
+      limits: { pageSizeDefault: 50, pageSizeMax: 200 }
+    };
+  }
+
+  runMigrations() {
+    const user = this.auth.assertAuthorized('ADMIN', 'ADMIN');
+    this.ensureConfigSheet_();
+    let current = this.getCurrentSchemaVersion_();
+    const target = this.getTargetSchemaVersion_();
+    const steps = [];
+    while (current < target) {
+      const next = current + 1;
+      this.applyMigrationStep_(next);
+      steps.push(next);
+      current = next;
+      this.setSchemaVersion_(current);
+    }
+    this.audit.log('SCHEMA_MIGRATION', 'CONFIG_APP', String(current), JSON.stringify({ actor: user.email, steps }));
+    return { ok: true, from: this.getCurrentSchemaVersion_() - steps.length, to: current, steps };
+  }
+
+  getCurrentSchemaVersion_() {
+    const scriptProp = PropertiesService.getScriptProperties().getProperty(SIGEP.appConfig.schemaVersionKey);
+    if (scriptProp) return Number(scriptProp) || SIGEP.appConfig.defaultSchemaVersion;
+    const rows = this.repo.getObjectsSafe(SIGEP.appConfig.sheet, []);
+    const row = rows.find(r => String(r.CHAVE || '').trim() === SIGEP.appConfig.schemaVersionKey);
+    if (!row) return SIGEP.appConfig.defaultSchemaVersion;
+    return Number(row.VALOR || SIGEP.appConfig.defaultSchemaVersion) || SIGEP.appConfig.defaultSchemaVersion;
+  }
+
+  getTargetSchemaVersion_() {
+    return 4;
+  }
+
+  setSchemaVersion_(version) {
+    const value = String(version);
+    PropertiesService.getScriptProperties().setProperty(SIGEP.appConfig.schemaVersionKey, value);
+    const rows = this.repo.getObjectsSafe(SIGEP.appConfig.sheet, []);
+    const row = rows.find(r => String(r.CHAVE || '').trim() === SIGEP.appConfig.schemaVersionKey);
+    if (row) {
+      this.repo.updateById(SIGEP.appConfig.sheet, 'CHAVE', SIGEP.appConfig.schemaVersionKey, { CHAVE: SIGEP.appConfig.schemaVersionKey, VALOR: value });
+    } else {
+      this.repo.append(SIGEP.appConfig.sheet, [SIGEP.appConfig.schemaVersionKey, value, 'versão de schema']);
+    }
+  }
+
+  applyMigrationStep_(version) {
+    if (version === 2) this.ensureConfigSheet_();
+    if (version === 3) this.ensureColumnIfMissing_(SIGEP.sheets.usuarios, 'SETOR');
+    if (version === 4) this.ensureBackupSheet_();
+  }
+
+  ensureConfigSheet_() {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    let sh = ss.getSheetByName(SIGEP.appConfig.sheet);
+    if (!sh) {
+      sh = ss.insertSheet(SIGEP.appConfig.sheet);
+      sh.getRange(1, 1, 1, 3).setValues([['CHAVE', 'VALOR', 'DESCRICAO']]);
+    }
+    return sh;
+  }
+
+  ensureBackupSheet_() {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    if (!ss.getSheetByName(SIGEP.sheets.backups)) {
+      const sh = ss.insertSheet(SIGEP.sheets.backups);
+      sh.getRange(1, 1, 1, 4).setValues([['DATA_EXECUCAO', 'RESUMO_JSON', 'QTD_FINDINGS', 'SEVERIDADE']]);
+    }
+  }
+
+  ensureColumnIfMissing_(sheetName, columnName) {
+    const sh = this.repo.getSheet(sheetName);
+    const headers = this.repo.getHeaders(sheetName).map(h => String(h).trim());
+    if (headers.includes(columnName)) return;
+    sh.insertColumnAfter(headers.length);
+    sh.getRange(1, headers.length + 1).setValue(columnName);
+  }
+}
+
 
 class AdminService {
   constructor(repo, audit) {
@@ -792,7 +1187,9 @@ class AuthorizationService {
       email,
       nome: user.NOME || '',
       perfil: this.normalizeRole_(user.PERFIL),
-      ativo: String(user.ATIVO || 'SIM').toUpperCase() !== 'NAO'
+      ativo: String(user.ATIVO || 'SIM').toUpperCase() !== 'NAO',
+      unidade: String(user.UNIDADE || '').trim(),
+      setor: String(user.SETOR || user.NOME_SETOR || '').trim()
     };
   }
 
@@ -816,19 +1213,41 @@ class AuthorizationService {
     );
   }
 
-  assertCanWrite(origem) {
+  assertAuthorized(modulo, acao) {
     const user = this.getCurrentUser();
-    if (!user.ativo) throw new Error('Usuário inativo para alteração.');
-    const allowed = ['ADMIN', 'ADMINISTRADOR', 'GESTOR', 'EDITOR'];
-    if (!allowed.includes(user.perfil)) throw new Error('Sem permissão de escrita para ' + origem + '.');
+    if (!user.ativo) throw new Error('Usuário inativo.');
+    const acaoNorm = String(acao || 'LISTAR').toUpperCase();
+    const moduloNorm = String(modulo || 'GERAL').toUpperCase();
+    const rules = this.getRbacRules_();
+    const allowedActions = (((rules[user.perfil] || {})[moduloNorm]) || rules[user.perfil] && rules[user.perfil].GERAL || []);
+    if (!allowedActions.includes(acaoNorm)) {
+      throw new Error('Acesso negado: perfil ' + user.perfil + ' sem permissão para ' + acaoNorm + ' em ' + moduloNorm + '.');
+    }
     return user;
   }
 
-  assertIsAdmin(origem) {
-    const user = this.getCurrentUser();
-    if (!user.ativo) throw new Error('Usuário inativo para alteração.');
-    if (!['ADMIN', 'ADMINISTRADOR'].includes(user.perfil)) throw new Error('Acesso restrito ao perfil ADMIN em ' + origem + '.');
-    return user;
+  applyDataScope(rows, user) {
+    const actor = user || this.getCurrentUser();
+    const privileged = ['ADMIN', 'ADMINISTRADOR', 'GESTOR'];
+    if (privileged.includes(actor.perfil)) return rows;
+    const unidade = String(actor.unidade || '').trim().toUpperCase();
+    const setor = String(actor.setor || '').trim().toUpperCase();
+    if (!unidade && !setor) return rows;
+    return (rows || []).filter(r => {
+      const rowUnidade = String(r.UNIDADE || r.NOME_SETOR || r.SETOR || '').trim().toUpperCase();
+      if (!rowUnidade) return true;
+      return rowUnidade === unidade || rowUnidade === setor;
+    });
+  }
+
+  getRbacRules_() {
+    return {
+      ADMIN: { GERAL: ['LISTAR', 'CRIAR', 'EDITAR', 'EXCLUIR', 'EXPORTAR', 'ADMIN'], ADMIN: ['LISTAR', 'CRIAR', 'EDITAR', 'EXCLUIR', 'EXPORTAR', 'ADMIN'] },
+      ADMINISTRADOR: { GERAL: ['LISTAR', 'CRIAR', 'EDITAR', 'EXCLUIR', 'EXPORTAR', 'ADMIN'], ADMIN: ['LISTAR', 'CRIAR', 'EDITAR', 'EXCLUIR', 'EXPORTAR', 'ADMIN'] },
+      GESTOR: { GERAL: ['LISTAR', 'CRIAR', 'EDITAR', 'EXPORTAR'], ADMIN: ['LISTAR'], PROCESSOS: ['LISTAR', 'CRIAR', 'EDITAR', 'EXPORTAR'], ACOMPANHAMENTO: ['LISTAR', 'CRIAR', 'EDITAR', 'EXPORTAR'], INDICADORES: ['LISTAR', 'CRIAR', 'EDITAR', 'EXPORTAR'] },
+      EDITOR: { GERAL: ['LISTAR', 'EDITAR'], PROCESSOS: ['LISTAR', 'EDITAR'], ACOMPANHAMENTO: ['LISTAR', 'EDITAR'], INDICADORES: ['LISTAR', 'EDITAR'], ADMIN: [] },
+      LEITOR: { GERAL: ['LISTAR'], PROCESSOS: ['LISTAR'], ACOMPANHAMENTO: ['LISTAR'], INDICADORES: ['LISTAR'], ADMIN: [] }
+    };
   }
 
   normalizeRole_(role) {
@@ -884,20 +1303,31 @@ class PayloadValidator {
   static validateProcessoUpdate(payload) {
     const allowed = ['MODELAGEM_REALIZADA', 'VALIDACAO_NUGESP', 'VALIDACAO_DIRECAO', 'PUBLICACAO'];
     this.validateAllowedKeys_(payload, ['ID_PROCESSO', 'MOTIVO_ALTERACAO'].concat(allowed), 'processo');
+    this.validateRequiredChangeReason_(payload, allowed, 'processo');
   }
 
   static validateAcompanhamentoUpdate(payload) {
     const allowed = ['DATA_AGENDAMENTO', 'STATUS_AGENDAMENTO', 'INTRODUCAO', 'PERFIL', 'FLUXO_PROCESSO', 'MODELAGEM', 'INDICADORES', 'FICHA_TECNICA_INDICADORES'];
     this.validateAllowedKeys_(payload, ['ID_ACOMPANHAMENTO', 'MOTIVO_ALTERACAO'].concat(allowed), 'acompanhamento');
+    this.validateRequiredChangeReason_(payload, allowed, 'acompanhamento');
   }
 
   static validateIndicadorUpdate(payload) {
     const allowed = ['NOME_INDICADOR', 'TIPO_INDICADOR', 'META', 'RESULTADO_ESPERADO'];
     this.validateAllowedKeys_(payload, ['ID_INDICADOR', 'MOTIVO_ALTERACAO'].concat(allowed), 'indicador');
+    this.validateRequiredChangeReason_(payload, allowed, 'indicador');
   }
 
   static validateAllowedKeys_(payload, allowed, context) {
     const invalidKeys = Object.keys(payload || {}).filter(k => !allowed.includes(k));
     if (invalidKeys.length) throw new Error('Campos não permitidos para ' + context + ': ' + invalidKeys.join(', '));
+  }
+
+  static validateRequiredChangeReason_(payload, editableFields, context) {
+    const hasPatch = editableFields.some(k => payload[k] !== undefined);
+    if (!hasPatch) return;
+    if (!String(payload.MOTIVO_ALTERACAO || '').trim()) {
+      throw new Error('MOTIVO_ALTERACAO é obrigatório para atualização de ' + context + '.');
+    }
   }
 }
