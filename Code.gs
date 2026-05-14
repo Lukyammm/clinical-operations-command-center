@@ -123,13 +123,13 @@ function getIndicadoresPage(payload) {
 
 function withWritePermission_(screenName, callback) {
   const app = new SigepApplication();
-  app.auth.assertCanWrite(screenName || 'GERAL');
+  app.auth.assertAuthorized(screenName || 'GERAL', 'EDITAR');
   return callback(app);
 }
 
 function withAdminPermission_(screenName, callback) {
   const app = new SigepApplication();
-  app.auth.assertIsAdmin(screenName || 'ADMIN');
+  app.auth.assertAuthorized(screenName || 'ADMIN', 'ADMIN');
   return callback(app);
 }
 
@@ -206,16 +206,17 @@ class SigepApplication {
     if (cached) return JSON.parse(cached);
 
     const featureFlags = this.repo.getFeatureFlags();
-    const processos = featureFlags.PROCESSOS ? this.processos.list() : [];
-    const acompanhamento = featureFlags.ACOMPANHAMENTO ? this.acompanhamento.list() : [];
-    const indicadores = featureFlags.INDICADORES ? this.indicadores.list() : [];
+    const user = this.auth.getCurrentUser();
+    const processos = featureFlags.PROCESSOS ? this.auth.applyDataScope(this.processos.list(), user) : [];
+    const acompanhamento = featureFlags.ACOMPANHAMENTO ? this.auth.applyDataScope(this.acompanhamento.list(), user) : [];
+    const indicadores = featureFlags.INDICADORES ? this.auth.applyDataScope(this.indicadores.list(), user) : [];
     const lancamentos = featureFlags.INDICADORES ? this.indicadores.listLancamentos() : [];
     const unidades = this.repo.getObjects(SIGEP.sheets.unidades);
     const result = {
       ok: true,
       generatedAt: new Date().toISOString(),
       generatedAtLocal: this.repo.formatDatePtBr(new Date()),
-      user: Session.getActiveUser().getEmail() || '',
+      user: user.email || '',
       dashboard: this.dashboard.build(processos, acompanhamento, indicadores, lancamentos),
       processos,
       acompanhamento,
@@ -238,17 +239,20 @@ class SigepApplication {
 
   getProcessosPage(payload) {
     if (!this.repo.getFeatureFlag('PROCESSOS')) return { ok: true, data: [], page: 1, pageSize: 50, total: 0, totalPages: 1 };
-    return this.repo.paginate(this.processos.list(), payload);
+    const user = this.auth.getCurrentUser();
+    return this.repo.paginate(this.auth.applyDataScope(this.processos.list(), user), payload);
   }
 
   getAcompanhamentoPage(payload) {
     if (!this.repo.getFeatureFlag('ACOMPANHAMENTO')) return { ok: true, data: [], page: 1, pageSize: 50, total: 0, totalPages: 1 };
-    return this.repo.paginate(this.acompanhamento.list(), payload);
+    const user = this.auth.getCurrentUser();
+    return this.repo.paginate(this.auth.applyDataScope(this.acompanhamento.list(), user), payload);
   }
 
   getIndicadoresPage(payload) {
     if (!this.repo.getFeatureFlag('INDICADORES')) return { ok: true, data: [], page: 1, pageSize: 50, total: 0, totalPages: 1 };
-    return this.repo.paginate(this.indicadores.list(), payload);
+    const user = this.auth.getCurrentUser();
+    return this.repo.paginate(this.auth.applyDataScope(this.indicadores.list(), user), payload);
   }
 
   runBasesHealthCheck() {
@@ -932,7 +936,9 @@ class AuthorizationService {
       email,
       nome: user.NOME || '',
       perfil: this.normalizeRole_(user.PERFIL),
-      ativo: String(user.ATIVO || 'SIM').toUpperCase() !== 'NAO'
+      ativo: String(user.ATIVO || 'SIM').toUpperCase() !== 'NAO',
+      unidade: String(user.UNIDADE || '').trim(),
+      setor: String(user.SETOR || user.NOME_SETOR || '').trim()
     };
   }
 
@@ -956,19 +962,41 @@ class AuthorizationService {
     );
   }
 
-  assertCanWrite(origem) {
+  assertAuthorized(modulo, acao) {
     const user = this.getCurrentUser();
-    if (!user.ativo) throw new Error('Usuário inativo para alteração.');
-    const allowed = ['ADMIN', 'ADMINISTRADOR', 'GESTOR', 'EDITOR'];
-    if (!allowed.includes(user.perfil)) throw new Error('Sem permissão de escrita para ' + origem + '.');
+    if (!user.ativo) throw new Error('Usuário inativo.');
+    const acaoNorm = String(acao || 'LISTAR').toUpperCase();
+    const moduloNorm = String(modulo || 'GERAL').toUpperCase();
+    const rules = this.getRbacRules_();
+    const allowedActions = (((rules[user.perfil] || {})[moduloNorm]) || rules[user.perfil] && rules[user.perfil].GERAL || []);
+    if (!allowedActions.includes(acaoNorm)) {
+      throw new Error('Acesso negado: perfil ' + user.perfil + ' sem permissão para ' + acaoNorm + ' em ' + moduloNorm + '.');
+    }
     return user;
   }
 
-  assertIsAdmin(origem) {
-    const user = this.getCurrentUser();
-    if (!user.ativo) throw new Error('Usuário inativo para alteração.');
-    if (!['ADMIN', 'ADMINISTRADOR'].includes(user.perfil)) throw new Error('Acesso restrito ao perfil ADMIN em ' + origem + '.');
-    return user;
+  applyDataScope(rows, user) {
+    const actor = user || this.getCurrentUser();
+    const privileged = ['ADMIN', 'ADMINISTRADOR', 'GESTOR'];
+    if (privileged.includes(actor.perfil)) return rows;
+    const unidade = String(actor.unidade || '').trim().toUpperCase();
+    const setor = String(actor.setor || '').trim().toUpperCase();
+    if (!unidade && !setor) return rows;
+    return (rows || []).filter(r => {
+      const rowUnidade = String(r.UNIDADE || r.NOME_SETOR || r.SETOR || '').trim().toUpperCase();
+      if (!rowUnidade) return true;
+      return rowUnidade === unidade || rowUnidade === setor;
+    });
+  }
+
+  getRbacRules_() {
+    return {
+      ADMIN: { GERAL: ['LISTAR', 'CRIAR', 'EDITAR', 'EXCLUIR', 'EXPORTAR', 'ADMIN'], ADMIN: ['LISTAR', 'CRIAR', 'EDITAR', 'EXCLUIR', 'EXPORTAR', 'ADMIN'] },
+      ADMINISTRADOR: { GERAL: ['LISTAR', 'CRIAR', 'EDITAR', 'EXCLUIR', 'EXPORTAR', 'ADMIN'], ADMIN: ['LISTAR', 'CRIAR', 'EDITAR', 'EXCLUIR', 'EXPORTAR', 'ADMIN'] },
+      GESTOR: { GERAL: ['LISTAR', 'CRIAR', 'EDITAR', 'EXPORTAR'], ADMIN: ['LISTAR'], PROCESSOS: ['LISTAR', 'CRIAR', 'EDITAR', 'EXPORTAR'], ACOMPANHAMENTO: ['LISTAR', 'CRIAR', 'EDITAR', 'EXPORTAR'], INDICADORES: ['LISTAR', 'CRIAR', 'EDITAR', 'EXPORTAR'] },
+      EDITOR: { GERAL: ['LISTAR', 'EDITAR'], PROCESSOS: ['LISTAR', 'EDITAR'], ACOMPANHAMENTO: ['LISTAR', 'EDITAR'], INDICADORES: ['LISTAR', 'EDITAR'], ADMIN: [] },
+      LEITOR: { GERAL: ['LISTAR'], PROCESSOS: ['LISTAR'], ACOMPANHAMENTO: ['LISTAR'], INDICADORES: ['LISTAR'], ADMIN: [] }
+    };
   }
 
   normalizeRole_(role) {
@@ -1024,20 +1052,31 @@ class PayloadValidator {
   static validateProcessoUpdate(payload) {
     const allowed = ['MODELAGEM_REALIZADA', 'VALIDACAO_NUGESP', 'VALIDACAO_DIRECAO', 'PUBLICACAO'];
     this.validateAllowedKeys_(payload, ['ID_PROCESSO', 'MOTIVO_ALTERACAO'].concat(allowed), 'processo');
+    this.validateRequiredChangeReason_(payload, allowed, 'processo');
   }
 
   static validateAcompanhamentoUpdate(payload) {
     const allowed = ['DATA_AGENDAMENTO', 'STATUS_AGENDAMENTO', 'INTRODUCAO', 'PERFIL', 'FLUXO_PROCESSO', 'MODELAGEM', 'INDICADORES', 'FICHA_TECNICA_INDICADORES'];
     this.validateAllowedKeys_(payload, ['ID_ACOMPANHAMENTO', 'MOTIVO_ALTERACAO'].concat(allowed), 'acompanhamento');
+    this.validateRequiredChangeReason_(payload, allowed, 'acompanhamento');
   }
 
   static validateIndicadorUpdate(payload) {
     const allowed = ['NOME_INDICADOR', 'TIPO_INDICADOR', 'META', 'RESULTADO_ESPERADO'];
     this.validateAllowedKeys_(payload, ['ID_INDICADOR', 'MOTIVO_ALTERACAO'].concat(allowed), 'indicador');
+    this.validateRequiredChangeReason_(payload, allowed, 'indicador');
   }
 
   static validateAllowedKeys_(payload, allowed, context) {
     const invalidKeys = Object.keys(payload || {}).filter(k => !allowed.includes(k));
     if (invalidKeys.length) throw new Error('Campos não permitidos para ' + context + ': ' + invalidKeys.join(', '));
+  }
+
+  static validateRequiredChangeReason_(payload, editableFields, context) {
+    const hasPatch = editableFields.some(k => payload[k] !== undefined);
+    if (!hasPatch) return;
+    if (!String(payload.MOTIVO_ALTERACAO || '').trim()) {
+      throw new Error('MOTIVO_ALTERACAO é obrigatório para atualização de ' + context + '.');
+    }
   }
 }
