@@ -121,6 +121,24 @@ function getIndicadoresPage(payload) {
   return app.getIndicadoresPage(payload);
 }
 
+function atualizarEmLote(payload) {
+  return runWithWriteLock_(() => withWritePermission_('GERAL', app => app.runBulkUpdate(payload)));
+}
+
+function getPainelPendencias(payload) {
+  const app = new SigepApplication();
+  return app.getPainelPendencias(payload);
+}
+
+function salvarFiltroAvancado(payload) {
+  return withWritePermission_('GERAL', app => app.salvarFiltroAvancado(payload));
+}
+
+function listarFiltrosAvancados() {
+  const app = new SigepApplication();
+  return app.listarFiltrosAvancados();
+}
+
 function withWritePermission_(screenName, callback) {
   const app = new SigepApplication();
   app.auth.assertAuthorized(screenName || 'GERAL', 'EDITAR');
@@ -268,6 +286,26 @@ class SigepApplication {
   runDailyOperationalGuardJob() {
     const ops = new OperationalHardeningService(this.repo, this.audit);
     return ops.runDailyGuard();
+  }
+
+  runBulkUpdate(payload) {
+    const ops = new ProductivityService(this.repo, this.audit, this.auth);
+    return ops.runBulkUpdate(payload);
+  }
+
+  getPainelPendencias(payload) {
+    const ops = new ProductivityService(this.repo, this.audit, this.auth);
+    return ops.getPainelPendencias(payload);
+  }
+
+  salvarFiltroAvancado(payload) {
+    const ops = new ProductivityService(this.repo, this.audit, this.auth);
+    return ops.salvarFiltroAvancado(payload);
+  }
+
+  listarFiltrosAvancados() {
+    const ops = new ProductivityService(this.repo, this.audit, this.auth);
+    return ops.listarFiltrosAvancados();
   }
 }
 
@@ -817,6 +855,102 @@ class OperationalHardeningService {
       .filter(Boolean);
     const fromConfig = (SIGEP.operations.adminEmails || []).map(e => String(e || '').trim().toLowerCase()).filter(Boolean);
     return [...new Set(fromUsers.concat(fromConfig))];
+  }
+}
+
+class ProductivityService {
+  constructor(repo, audit, auth) {
+    this.repo = repo;
+    this.audit = audit;
+    this.auth = auth;
+  }
+
+  runBulkUpdate(payload) {
+    const data = payload || {};
+    const modulo = String(data.modulo || '').toUpperCase();
+    const updates = Array.isArray(data.updates) ? data.updates : [];
+    if (!updates.length) throw new Error('Nenhuma atualização enviada para operação em lote.');
+    const reason = String(data.motivo || '').trim();
+    if (!reason) throw new Error('Motivo é obrigatório para atualização em lote.');
+    let success = 0;
+    const errors = [];
+    updates.forEach((u, index) => {
+      try {
+        if (modulo === 'PROCESSOS') {
+          const service = new ProcessoService(this.repo, this.audit);
+          service.update({ ...u, MOTIVO_ALTERACAO: reason });
+        } else if (modulo === 'ACOMPANHAMENTO') {
+          const service = new AcompanhamentoService(this.repo, this.audit);
+          service.updateStatus({ ...u, MOTIVO_ALTERACAO: reason });
+        } else if (modulo === 'INDICADORES') {
+          const service = new IndicadorService(this.repo, this.audit);
+          service.update({ ...u, MOTIVO_ALTERACAO: reason });
+        } else {
+          throw new Error('Módulo não suportado para lote: ' + modulo);
+        }
+        success++;
+      } catch (err) {
+        errors.push({ index, error: err.message });
+      }
+    });
+    return { ok: errors.length === 0, modulo, total: updates.length, success, errors };
+  }
+
+  getPainelPendencias(payload) {
+    const limiteDias = Math.max(1, Number(payload && payload.limiteDiasSemAtualizacao || 7));
+    const now = new Date();
+    const acompanhamento = this.auth.applyDataScope(
+      this.repo.getObjects(SIGEP.sheets.acompanhamento).map(DomainNormalizer.acompanhamento.bind(DomainNormalizer))
+    );
+    const pendencias = acompanhamento.map(row => {
+      const status = String(row.STATUS_AGENDAMENTO || '').toUpperCase();
+      const data = row.DATA_AGENDAMENTO ? new Date(row.DATA_AGENDAMENTO) : null;
+      const diasSemAtualizacao = data && !isNaN(data.getTime()) ? Math.floor((now.getTime() - data.getTime()) / 86400000) : null;
+      return {
+        id: row.ID_ACOMPANHAMENTO,
+        unidade: row.UNIDADE || '',
+        status: row.STATUS_AGENDAMENTO || '',
+        progresso: Number(row.PROGRESSO_PERCENTUAL || 0),
+        diasSemAtualizacao,
+        emAtraso: status.includes('ATRAS') || (diasSemAtualizacao !== null && diasSemAtualizacao > limiteDias),
+        semAtualizacaoCritica: diasSemAtualizacao !== null && diasSemAtualizacao > limiteDias
+      };
+    });
+    const atrasados = pendencias.filter(x => x.emAtraso);
+    const semAtualizacaoCritica = pendencias.filter(x => x.semAtualizacaoCritica);
+    const baixoProgresso = pendencias.filter(x => x.progresso < 50);
+    return {
+      ok: true,
+      total: pendencias.length,
+      resumo: {
+        atrasados: atrasados.length,
+        semAtualizacaoCritica: semAtualizacaoCritica.length,
+        baixoProgresso: baixoProgresso.length
+      },
+      itens: pendencias.sort((a, b) => Number(b.emAtraso) - Number(a.emAtraso) || (b.diasSemAtualizacao || 0) - (a.diasSemAtualizacao || 0))
+    };
+  }
+
+  salvarFiltroAvancado(payload) {
+    const user = this.auth.getCurrentUser();
+    const name = String(payload && payload.nome || '').trim();
+    const filtros = payload && payload.filtros;
+    if (!name) throw new Error('Nome do filtro é obrigatório.');
+    if (!filtros || typeof filtros !== 'object') throw new Error('Filtros inválidos.');
+    const key = ['sigep:filtros', user.email, name].join(':');
+    PropertiesService.getUserProperties().setProperty(key, JSON.stringify({ nome: name, filtros, updatedAt: new Date().toISOString() }));
+    return { ok: true, nome: name };
+  }
+
+  listarFiltrosAvancados() {
+    const user = this.auth.getCurrentUser();
+    const prefix = ['sigep:filtros', user.email, ''].join(':');
+    const all = PropertiesService.getUserProperties().getProperties();
+    const list = Object.keys(all)
+      .filter(k => k.indexOf(prefix) === 0)
+      .map(k => JSON.parse(all[k]))
+      .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
+    return { ok: true, filtros: list };
   }
 }
 
