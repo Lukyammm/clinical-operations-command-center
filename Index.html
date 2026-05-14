@@ -188,11 +188,12 @@
 
     .pill-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
     .process-flow { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin-top:14px; padding-top:14px; border-top:1px dashed #d9e6f4; }
-    .flow-step { position:relative; border:1px solid #d6e5f3; border-radius:12px; background:linear-gradient(180deg,#f6faff 0%,#eef5fd 100%); padding:9px 10px; min-height:64px; }
+    .flow-step { position:relative; border:1px solid #d6e5f3; border-radius:12px; background:linear-gradient(180deg,#f6faff 0%,#eef5fd 100%); padding:9px 10px; min-height:64px; overflow:hidden; }
     .flow-step:not(:last-child)::after { content:''; position:absolute; top:50%; right:-9px; width:10px; border-top:2px solid #b8cce1; transform:translateY(-50%); }
     .flow-step b { display:block; font-size:10px; color:#60758f; text-transform:uppercase; letter-spacing:.07em; margin-bottom:4px; }
     .flow-step span { font-size:12px; font-weight:700; color:var(--ink); }
-    .pill { display: inline-flex; align-items: center; justify-content: center; min-height: 30px; gap: 6px; border-radius: 10px; padding: 6px 12px; font-size: 11px; font-weight: 700; background: #eef3f9; color: #324c67; white-space: nowrap; border:1px solid #dce7f3; }
+    .pill { display: inline-flex; align-items: center; justify-content: center; min-height: 30px; gap: 6px; border-radius: 10px; padding: 6px 12px; font-size: 11px; font-weight: 700; background: #eef3f9; color: #324c67; white-space: nowrap; border:1px solid #dce7f3; max-width:100%; }
+    .process-flow .pill { white-space: normal; text-align: center; line-height: 1.2; overflow-wrap: anywhere; }
     .process-card-head .pill { align-self: start; margin-top: 1px; }
     .pill.ok { background: #e8f6ef; border-color:#c6e8d6; color: #27784f; }
     .pill.warn { background: var(--warning-bg); color: var(--warning); }
@@ -400,6 +401,8 @@
       .nav { grid-template-columns: repeat(4, 1fr); }
       .hero, .kpi-grid, .acomp-grid { grid-template-columns: 1fr; }
       .process-grid, .indicator-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .process-flow { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .flow-step::after { display:none; }
       .indicators-layout { grid-template-columns: 1fr; }
       .indicator-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .indicator-list { grid-template-columns: 1fr; }
@@ -420,6 +423,7 @@
       .search { width: 100%; }
       .panel-head { position: static; }
       .process-grid, .indicator-grid, .steps, .meta-grid, .result-box { grid-template-columns: 1fr; }
+      .process-flow { grid-template-columns: 1fr; }
       .indicator-summary, .indicator-meta { grid-template-columns: 1fr; }
       .nav { grid-template-columns: 1fr; }
       .kpi-grid, .admin-grid { grid-template-columns: 1fr; }
