@@ -381,15 +381,47 @@ class DomainNormalizer {
   }
 
   static indicador(raw) {
+    const metaRaw = this.asText(raw.META);
+    const metaOperadorRaw = this.asText(raw.META_OPERADOR);
+    const operadoresValidos = ['>=', '>', '<=', '<', '='];
+    const operadoresPorCodigo = { '1': '>=', '2': '>', '3': '<=', '4': '<', '5': '=' };
+
+    const extrairOperadorMeta = (valor) => {
+      const texto = this.asText(valor);
+      if (!texto) return { operador: '', meta: '' };
+      const match = texto.match(/^(>=|<=|>|<|=)\s*(.+)$/);
+      if (match) return { operador: match[1], meta: this.asText(match[2]) };
+      return { operador: '', meta: texto };
+    };
+
+    const normalizarOperador = (valor) => {
+      const texto = this.asText(valor);
+      if (!texto) return '';
+      if (operadoresValidos.includes(texto)) return texto;
+      if (operadoresPorCodigo[texto]) return operadoresPorCodigo[texto];
+      return '';
+    };
+
+    const metaExtraida = extrairOperadorMeta(metaRaw);
+    const operador = normalizarOperador(metaOperadorRaw)
+      || normalizarOperador(metaExtraida.operador)
+      || '>=';
+
+    const meta = metaExtraida.meta && !operadoresValidos.includes(metaExtraida.meta)
+      ? metaExtraida.meta
+      : this.asText(raw.META_VALOR || raw.VALOR_META || '');
+
     return {
       ...raw,
       ID_INDICADOR: this.asText(raw.ID_INDICADOR),
       NOME_INDICADOR: this.asText(raw.NOME_INDICADOR),
       TIPO_INDICADOR: this.asText(raw.TIPO_INDICADOR),
-      META: this.asText(raw.META),
+      META: meta || metaRaw,
+      META_OPERADOR: operador,
       RESULTADO_ESPERADO: this.asText(raw.RESULTADO_ESPERADO)
     };
   }
+
 
   static asText(v) { return String(v || '').trim(); }
   static asNumber(v) {
