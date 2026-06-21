@@ -1,50 +1,49 @@
 # Hospital Process Management System
 
-Hospital process management system focused on internal workflows, records, and operational control.
+Repository: `hospital-process-management-system`
 
 ## Overview
 
-This project was developed to solve real operational problems using web technologies and Google Workspace tools.
+SIGEP-HUC style process management dashboard for indicators, process boards, snapshots, governance, managers, and data review.
 
-## Features
+## Main Capabilities
 
-- Dashboard interface
-- Process automation
-- Data organization
-- KPI monitoring
-- Responsive design
-- Google Workspace integration
+- KPI dashboard with unit cards and historical indicators.
+- Process board for new, analysis, data cleanup, and completed work.
+- Snapshot routines and audit surfaces.
+- Data review center with manual and batch correction flows.
+
+## Operating Flow
+
+1. Review the main KPI and unit status cards.
+2. Move process items through the operational board.
+3. Run or inspect snapshot routines.
+4. Review data findings and apply corrections when appropriate.
+
+## Visual System Guide
+
+> The screens below are documentation mockups based on the components, labels, colors, and workflows found in this repository. All displayed data is fictitious and does not represent real patients, staff members, or institutions.
+
+### SIGEP-HUC - KPI dashboard
+![SIGEP-HUC - KPI dashboard](./docs/screenshots/kpi-dashboard.svg)
+
+### SIGEP-HUC - process board
+![SIGEP-HUC - process board](./docs/screenshots/process-board.svg)
+
+### SIGEP-HUC - routines and snapshots
+![SIGEP-HUC - routines and snapshots](./docs/screenshots/snapshot-jobs.svg)
+
+## Data Privacy
+
+The repository documentation and guide images use fictitious sample data only.
 
 ## Technologies
 
 - JavaScript
-- HTML
-- CSS
+- HTML/CSS
 - Google Apps Script
 - Google Sheets
-- Looker Studio
-
-## Purpose
-
-The goal of this project is to improve operational efficiency, reduce manual work, and support better decision-making through automation and clear data visualization.
-
-
-
-
-
-## Guia visual do sistema
-
-> Telas demonstrativas baseadas nos componentes, textos, cores e fluxos encontrados no código deste repositório. Os dados exibidos são fictícios e não representam pacientes, profissionais ou instituições reais.
-
-### SIGEP-HUC - dashboard de KPI
-![SIGEP-HUC - dashboard de KPI](./docs/screenshots/kpi-dashboard.svg)
-
-### SIGEP-HUC - quadro de processos
-![SIGEP-HUC - quadro de processos](./docs/screenshots/process-board.svg)
-
-### SIGEP-HUC - rotinas e snapshots
-![SIGEP-HUC - rotinas e snapshots](./docs/screenshots/snapshot-jobs.svg)
 
 ## Status
 
-In development
+Completed
