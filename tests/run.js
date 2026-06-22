@@ -97,8 +97,9 @@ section('Backend (Code.gs) — sintaxe e regras de negócio');
 /* ------------------------------------------------------------------ */
 section('Frontend (index.html) — smoke (sucesso e falha)');
 (function frontendTests() {
-  const htmlPath = ['Index.html', 'index.html'].map(f => path.join(ROOT, f)).find(p => fs.existsSync(p));
-  const html = fs.readFileSync(htmlPath, 'utf8');
+  // Busca o arquivo HTML de forma insensível à caixa (o repo usa "Index.html").
+  const htmlFile = fs.readdirSync(ROOT).find(f => /^index\.html$/i.test(f)) || 'Index.html';
+  const html = fs.readFileSync(path.join(ROOT, htmlFile), 'utf8');
   const start = html.lastIndexOf('<script>');
   const end = html.lastIndexOf('</script>');
   const code = html.slice(start + '<script>'.length, end);
