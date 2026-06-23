@@ -27,9 +27,10 @@ const SIGEP = {
         'META_OPERADOR', 'POLARIDADE_META', 'PERIODICIDADE',
         'CATEGORIA_INDICADOR', 'TIPO_OPERACIONAL', 'EIXO_ASSISTENCIAL',
         'ANALISTA_RESPONSAVEL', 'GESTOR_RESPONSAVEL', 'LINK_FICHA_TECNICA_CONECTA',
-        'LINK_PLANILHA_GESTAO', 'ABA_PLANILHA_GESTAO', 'FONTE_LANCAMENTO'
+        'LINK_PLANILHA_GESTAO', 'ABA_PLANILHA_GESTAO'
       ],
-      BASE_ACOMPANHAMENTO: ['LINK_PLANILHA_GESTAO']
+      BASE_ACOMPANHAMENTO: ['LINK_PLANILHA_GESTAO'],
+      BASE_LANCAMENTOS_INDICADORES: ['NUMERADOR', 'DENOMINADOR', 'FONTE']
     }
   },
   mapeamentoColumns: [
@@ -236,13 +237,45 @@ function excluirIndicador(payload) {
 }
 
 function listarAbasPlanilhaIndicador(url) {
-  const app = new SigepApplication();
-  const abas = app.indicadores.listarAbas_(url);
-  return { ok: true, abas };
+  try {
+    const ss = SpreadsheetApp.openByUrl(url);
+    const sheets = ss.getSheets();
+    const normalizeStr = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase();
+    const valid = [];
+    sheets.forEach(sh => {
+      try {
+        const lastCol = sh.getLastColumn();
+        const lastRow = sh.getLastRow();
+        if (lastRow < 4 || lastCol < 1) return;
+        const a4b4 = sh.getRange(4, 1, 1, Math.min(2, lastCol)).getDisplayValues()[0].join(' ');
+        const hasMeta = normalizeStr(a4b4).indexOf('META') > -1;
+        let hasResp = false;
+        if (lastCol >= 9) {
+          const g4i4 = sh.getRange(4, 7, 1, 3).getDisplayValues()[0].join(' ');
+          hasResp = normalizeStr(g4i4).indexOf('RESPONSAVEL PELA META') > -1;
+        }
+        if (hasMeta || hasResp) valid.push(sh.getName());
+      } catch (e) { /* aba inacessível, ignora */ }
+    });
+    return { ok: true, abas: valid };
+  } catch (e) {
+    throw new Error('Não foi possível acessar a planilha: ' + e.message);
+  }
 }
 
 function salvarAbaPlanilhaIndicador(payload) {
-  return runWithWriteLock_(() => withWritePermission_('INDICADORES', app => app.indicadores.salvarAbaPlanilha(payload)));
+  // Salvar configuração dentro do lock (operação rápida de escrita)
+  const result = runWithWriteLock_(() => withWritePermission_('INDICADORES', app => app.indicadores.salvarAbaPlanilha(payload)));
+  // Importar lançamentos FORA do lock (abre planilha externa — pode ser lento)
+  if (result && result.ok && result.data) {
+    try {
+      const app = new SigepApplication();
+      app.indicadores.importarLancamentos_(result.data);
+    } catch (e) {
+      console.warn('Importação automática após configuração falhou:', e && e.message ? e.message : e);
+    }
+  }
+  return result;
 }
 
 function importarTodosLancamentosAutomatico() {
@@ -1294,8 +1327,6 @@ class IndicadorService {
     };
     const updated = this.repo.updateById(SIGEP.sheets.indicadores, 'ID_INDICADOR', payload.ID_INDICADOR, patch, current);
     this.audit.logChange({ acao: 'CONFIGURAR_PLANILHA_INDICADOR', entidade: 'INDICADOR', id: payload.ID_INDICADOR, before: current, after: updated, patch, origem: 'INDICADORES', motivo: 'Configuração de planilha de gestão' });
-    // Importa imediatamente após salvar
-    this.importarLancamentos_(Object.assign({}, current, patch));
     return { ok: true, data: updated };
   }
 
