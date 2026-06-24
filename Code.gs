@@ -26,9 +26,11 @@ const SIGEP = {
       BASE_INDICADORES: [
         'META_OPERADOR', 'POLARIDADE_META', 'PERIODICIDADE',
         'CATEGORIA_INDICADOR', 'TIPO_OPERACIONAL', 'EIXO_ASSISTENCIAL',
-        'ANALISTA_RESPONSAVEL', 'GESTOR_RESPONSAVEL', 'LINK_FICHA_TECNICA_CONECTA'
+        'ANALISTA_RESPONSAVEL', 'GESTOR_RESPONSAVEL', 'LINK_FICHA_TECNICA_CONECTA',
+        'LINK_PLANILHA_GESTAO', 'ABA_PLANILHA_GESTAO'
       ],
-      BASE_ACOMPANHAMENTO: ['LINK_PLANILHA_GESTAO']
+      BASE_ACOMPANHAMENTO: ['LINK_PLANILHA_GESTAO'],
+      BASE_LANCAMENTOS_INDICADORES: ['NUMERADOR', 'DENOMINADOR', 'FONTE']
     }
   },
   mapeamentoColumns: [
@@ -232,6 +234,73 @@ function excluirProcesso(payload) {
 
 function excluirIndicador(payload) {
   return runWithWriteLock_(() => withWritePermission_('INDICADORES', app => app.indicadores.remove(payload)));
+}
+
+// Abre a planilha de gestão e devolve apenas as abas válidas para indicador:
+// têm "META:" em A4:B4 OU "RESPONSÁVEL PELA META:" em G4:I4. Leitura pura, sem lock.
+function listarAbasPlanilhaIndicador(url) {
+  const link = String(url || '').trim();
+  if (!link) throw new Error('Informe o link da planilha de gestão.');
+  let ss;
+  try {
+    ss = SpreadsheetApp.openByUrl(link);
+  } catch (e) {
+    throw new Error('Não foi possível abrir a planilha. Confira o link e se você tem acesso de leitura a ela.');
+  }
+  const norm = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+  const abas = [];
+  ss.getSheets().forEach(sh => {
+    try {
+      const lastCol = sh.getLastColumn();
+      const lastRow = sh.getLastRow();
+      if (lastRow < 4 || lastCol < 1) return;
+      const a4b4 = norm(sh.getRange(4, 1, 1, Math.min(2, lastCol)).getDisplayValues()[0].join(' '));
+      const temMeta = a4b4.indexOf('META') > -1;
+      let temResponsavel = false;
+      if (lastCol >= 9) {
+        const g4i4 = norm(sh.getRange(4, 7, 1, 3).getDisplayValues()[0].join(' '));
+        temResponsavel = g4i4.indexOf('RESPONSAVEL PELA META') > -1;
+      }
+      if (temMeta || temResponsavel) abas.push(sh.getName());
+    } catch (e) { /* aba protegida/inacessível: ignora */ }
+  });
+  return { ok: true, abas: abas, titulo: ss.getName() };
+}
+
+// Salva o vínculo planilha+aba no indicador (dentro do lock) e, em seguida,
+// importa os lançamentos FORA do lock (abrir planilha externa é lento; não trava escritas).
+function salvarAbaPlanilhaIndicador(payload) {
+  const result = runWithWriteLock_(() => withWritePermission_('INDICADORES', app => app.indicadores.salvarAbaPlanilha(payload)));
+  if (result && result.ok && result.data) {
+    try {
+      runWithWriteLock_(() => {
+        const app = new SigepApplication();
+        app.indicadores.importarLancamentos_(result.data);
+      });
+      const app = new SigepApplication();
+      result.lancamentos = app.indicadores.listLancamentos();
+    } catch (e) {
+      console.warn('Importação após configurar planilha falhou: ' + (e && e.message ? e.message : e));
+    }
+  }
+  return result;
+}
+
+// Sincroniza os lançamentos de UM indicador a partir da planilha de gestão (sob demanda).
+function importarLancamentosIndicador(idIndicador) {
+  return runWithWriteLock_(() => withWritePermission_('INDICADORES', app => {
+    const ind = app.repo.getById(SIGEP.sheets.indicadores, 'ID_INDICADOR', idIndicador);
+    const importados = app.indicadores.importarLancamentos_(ind);
+    return { ok: true, importados: importados, lancamentos: app.indicadores.listLancamentos() };
+  }));
+}
+
+// Sincroniza TODOS os indicadores configurados (usado pelo refresh automático em 2º plano).
+function importarTodosLancamentosAutomatico() {
+  return runWithWriteLock_(() => withWritePermission_('INDICADORES', app => {
+    const total = app.indicadores.importarTodosLancamentos();
+    return { ok: true, total: total, lancamentos: app.indicadores.listLancamentos() };
+  }));
 }
 
 function criarMetaPeriodo(payload) {
@@ -596,6 +665,8 @@ class DomainNormalizer {
       ANALISTA_RESPONSAVEL: this.asText(raw.ANALISTA_RESPONSAVEL),
       GESTOR_RESPONSAVEL: this.asText(raw.GESTOR_RESPONSAVEL),
       LINK_FICHA_TECNICA_CONECTA: this.asText(raw.LINK_FICHA_TECNICA_CONECTA),
+      LINK_PLANILHA_GESTAO: this.asText(raw.LINK_PLANILHA_GESTAO),
+      ABA_PLANILHA_GESTAO: this.asText(raw.ABA_PLANILHA_GESTAO),
       RESULTADO_ESPERADO: this.asText(raw.RESULTADO_ESPERADO)
     };
   }
@@ -1098,7 +1169,7 @@ class AcompanhamentoService {
   }
 
   isNaoSeAplica_(value) {
-    const normalized = String(value || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().trim();
+    const normalized = String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().trim();
     return normalized.includes('NAO SE APLICA') || normalized === 'N/A' || normalized === 'NA';
   }
 
@@ -1264,6 +1335,170 @@ class IndicadorService {
     return `IND-${String(max + 1).padStart(4, '0')}`;
   }
 
+  // Vincula (ou desvincula) a planilha de gestão + aba ao indicador.
+  salvarAbaPlanilha(payload) {
+    if (!payload || !payload.ID_INDICADOR) throw new Error('ID_INDICADOR obrigatório.');
+    const current = this.repo.getById(SIGEP.sheets.indicadores, 'ID_INDICADOR', payload.ID_INDICADOR);
+    if (!current) throw new Error('Indicador não encontrado.');
+    const patch = {
+      LINK_PLANILHA_GESTAO: String(payload.LINK_PLANILHA_GESTAO || '').trim(),
+      ABA_PLANILHA_GESTAO: String(payload.ABA_PLANILHA_GESTAO || '').trim()
+    };
+    const updated = this.repo.updateById(SIGEP.sheets.indicadores, 'ID_INDICADOR', payload.ID_INDICADOR, patch, current);
+    const desvinculo = !patch.LINK_PLANILHA_GESTAO && !patch.ABA_PLANILHA_GESTAO;
+    if (desvinculo) this.deleteLancamentosDaPlanilha_(payload.ID_INDICADOR);
+    this.audit.logChange({
+      acao: desvinculo ? 'DESVINCULAR_PLANILHA_INDICADOR' : 'CONFIGURAR_PLANILHA_INDICADOR',
+      entidade: 'INDICADOR', id: payload.ID_INDICADOR, before: current, after: updated, patch,
+      origem: 'INDICADORES', motivo: payload.MOTIVO_ALTERACAO || 'Planilha de gestão do indicador'
+    });
+    return { ok: true, data: updated };
+  }
+
+  // Remove lançamentos importados da planilha (FONTE = PLANILHA_GESTAO) do indicador.
+  // extraCompKeys (opcional): também apaga lançamentos MANUAIS dos meses informados,
+  // garantindo que a planilha sobrescreva esses meses sem duplicar linhas ("planilha manda").
+  deleteLancamentosDaPlanilha_(idIndicador, extraCompKeys) {
+    const sheetName = SIGEP.sheets.lancamentos;
+    const sheet = this.repo.getSheet(sheetName);
+    const headers = this.repo.getHeaders(sheetName);
+    const idIdx = headers.indexOf('ID_INDICADOR');
+    const fonteIdx = headers.indexOf('FONTE');
+    const compIdx = headers.indexOf('COMPETENCIA');
+    if (idIdx === -1) return;
+    const lastRow = sheet.getLastRow();
+    if (lastRow < 2) return;
+    const values = sheet.getRange(2, 1, lastRow - 1, headers.length).getDisplayValues();
+    const rowsToDelete = [];
+    values.forEach((row, i) => {
+      const rowId = String(row[idIdx] || '').trim();
+      if (rowId !== String(idIndicador).trim()) return;
+      const fonte = fonteIdx > -1 ? String(row[fonteIdx] || '').trim() : '';
+      const compK = compIdx > -1 ? competenciaKey_(row[compIdx]) : 0;
+      const ehDaPlanilha = fonteIdx === -1 || fonte === 'PLANILHA_GESTAO';
+      const ehMesCoberto = extraCompKeys && compK && extraCompKeys[compK];
+      if (ehDaPlanilha || ehMesCoberto) rowsToDelete.push(i + 2);
+    });
+    rowsToDelete.reverse().forEach(rowNum => sheet.deleteRow(rowNum));
+    delete this.repo.objectsCache[sheetName];
+  }
+
+  // Lê V/W/X/Y (a partir da linha 5) da aba configurada e regrava os lançamentos do indicador.
+  // "Planilha manda": substitui o que houver no SIGEP para aquele indicador.
+  // ssCache (opcional) reusa a mesma planilha aberta entre vários indicadores.
+  importarLancamentos_(indicador, ssCache) {
+    if (!indicador) return 0;
+    const url = String(indicador.LINK_PLANILHA_GESTAO || '').trim();
+    const aba = String(indicador.ABA_PLANILHA_GESTAO || '').trim();
+    const id = String(indicador.ID_INDICADOR || '').trim();
+    if (!url || !aba || !id) return 0;
+
+    let novas;
+    try {
+      let ss = ssCache ? ssCache[url] : undefined;
+      if (ss === undefined) {
+        try { ss = SpreadsheetApp.openByUrl(url); } catch (e) { ss = null; }
+        if (ssCache) ssCache[url] = ss;
+      }
+      if (!ss) return 0;
+      const sheet = ss.getSheetByName(aba);
+      if (!sheet) return 0;
+      const lastRow = sheet.getLastRow();
+      if (lastRow < 5) return 0;
+      // Coluna V (22) = período; W/X/Y = numerador/denominador/resultado. Dados começam na linha 5.
+      const data = sheet.getRange(5, 22, lastRow - 4, 4).getDisplayValues();
+      novas = data
+        .map(r => {
+          const comp = String(r[0] || '').trim();
+          const num = this.limparCelulaPlanilha_(r[1]);
+          const den = this.limparCelulaPlanilha_(r[2]);
+          let val = this.limparCelulaPlanilha_(r[3]);
+          // Resultado com erro de fórmula (#DIV/0! etc.): recalcula de num/den quando dá.
+          if (!val && num !== '' && den !== '') {
+            const n = IndicadorService.parseNum_(num);
+            const d = IndicadorService.parseNum_(den);
+            if (Number.isFinite(n) && Number.isFinite(d) && d !== 0) val = String(n / d);
+          }
+          return { comp: comp, num: num, den: den, val: val, key: competenciaKey_(comp) };
+        })
+        // Só meses válidos e que já têm algum dado (não polui com meses futuros em branco).
+        .filter(r => r.key && (r.num !== '' || r.den !== '' || r.val !== ''));
+    } catch (e) {
+      console.error('importarLancamentos_ falhou para ' + id + ': ' + (e && e.message ? e.message : e));
+      return 0;
+    }
+    if (!novas.length) return 0;
+
+    const sheetName = SIGEP.sheets.lancamentos;
+    const headers = this.repo.getHeaders(sheetName);
+    if (headers.indexOf('ID_INDICADOR') === -1 || headers.indexOf('COMPETENCIA') === -1) return 0;
+
+    // Sync barato: se a planilha já está refletida no SIGEP, não reescreve nada.
+    // É o que mantém o refresh automático em 2º plano leve (sem churn de escrita a cada load).
+    const atuais = this.repo.getObjects(sheetName).filter(l => String(l.ID_INDICADOR || '').trim() === id);
+    if (this.planilhaJaRefletida_(atuais, novas)) return 0;
+
+    // "Planilha manda": apaga as linhas de fonte planilha + qualquer lançamento manual
+    // dos meses cobertos, e regrava em lote os dados vindos da planilha.
+    const compKeys = {};
+    novas.forEach(r => { compKeys[r.key] = true; });
+    this.deleteLancamentosDaPlanilha_(id, compKeys);
+    const rows = novas.map(r => {
+      const obj = {
+        ID_INDICADOR: id,
+        COMPETENCIA: r.comp,
+        NUMERADOR: r.num,
+        DENOMINADOR: r.den,
+        VALOR: r.val,
+        FONTE: 'PLANILHA_GESTAO'
+      };
+      return headers.map(h => (obj[h] !== undefined ? obj[h] : ''));
+    });
+    this.repo.appendRows(sheetName, rows);
+    delete this.repo.objectsCache[sheetName];
+    return novas.length;
+  }
+
+  // Sincroniza todos os indicadores que têm planilha+aba configuradas, reusando planilhas abertas.
+  importarTodosLancamentos() {
+    const inds = this.repo.getObjects(SIGEP.sheets.indicadores)
+      .filter(ind => String(ind.LINK_PLANILHA_GESTAO || '').trim() && String(ind.ABA_PLANILHA_GESTAO || '').trim());
+    const ssCache = {};
+    let total = 0;
+    inds.forEach(ind => { total += this.importarLancamentos_(ind, ssCache); });
+    return total;
+  }
+
+  // Normaliza uma célula da planilha: descarta erros de fórmula (#DIV/0!, #REF!, #N/A...).
+  limparCelulaPlanilha_(v) {
+    const s = String(v == null ? '' : v).trim();
+    if (!s || s.charAt(0) === '#') return '';
+    return s;
+  }
+
+  // True quando os lançamentos já gravados (vindos da planilha) batem exatamente com a
+  // leitura atual e não há lançamento manual nos meses cobertos — então não precisa reimportar.
+  planilhaJaRefletida_(atuaisDoIndicador, novas) {
+    const fmt = (num, den, val) => this.limparCelulaPlanilha_(num) + '|' + this.limparCelulaPlanilha_(den) + '|' + this.limparCelulaPlanilha_(val);
+    const mapNovas = {};
+    novas.forEach(r => { mapNovas[r.key] = fmt(r.num, r.den, r.val); });
+    const mapPlan = {};
+    let manualEmMesCoberto = false;
+    (atuaisDoIndicador || []).forEach(l => {
+      const k = competenciaKey_(l.COMPETENCIA);
+      if (!k) return;
+      if (String(l.FONTE || '').trim() === 'PLANILHA_GESTAO') {
+        mapPlan[k] = fmt(l.NUMERADOR, l.DENOMINADOR, l.VALOR);
+      } else if (mapNovas[k] !== undefined) {
+        manualEmMesCoberto = true;
+      }
+    });
+    if (manualEmMesCoberto) return false;
+    const kNovas = Object.keys(mapNovas);
+    if (kNovas.length !== Object.keys(mapPlan).length) return false;
+    return kNovas.every(k => mapNovas[k] === mapPlan[k]);
+  }
+
   // Converte texto (ex.: ">= 90", "92,3%", "1.234,5") em número.
   static parseNum_(raw) {
     const txt = String(raw == null ? '' : raw).replace(/[^0-9.,-]/g, '').trim();
@@ -1275,7 +1510,7 @@ class IndicadorService {
 
   // Avalia se o valor atinge a meta, priorizando a POLARIDADE quando informada.
   static metaAtingida_(valor, meta, operador, polaridade) {
-    const pol = String(polaridade || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+    const pol = String(polaridade || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
     if (pol.indexOf('menor') === 0 || pol.indexOf('menor e melhor') > -1) return valor <= meta;
     if (pol.indexOf('igual') === 0 || pol.indexOf('igual ao alvo') > -1) return valor === meta;
     if (pol.indexOf('maior') === 0 || pol.indexOf('maior e melhor') > -1) return valor >= meta;
@@ -1500,7 +1735,7 @@ class MapeamentoService {
   }
 
   normalizeGrupo_(value) {
-    const n = String(value || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().trim();
+    const n = String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().trim();
     if (n.indexOf('GEREN') === 0) return 'Gerencial';
     if (n.indexOf('FINAL') === 0) return 'Finalístico';
     if (n.indexOf('APOIO') === 0) return 'Apoio';
@@ -2679,7 +2914,7 @@ class AuthorizationService {
   }
 
   normalizeRole_(role) {
-    return String(role || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().trim();
+    return String(role || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().trim();
   }
 }
 
