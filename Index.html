@@ -1723,6 +1723,77 @@
   <div class="save-feedback" id="saveFeedback"></div>
 
   <script>
+    // Diagnóstico global: se algum erro de JS escapar, mostramos a mensagem na
+    // tela em vez de deixar o app "travado" silenciosamente. Ajuda a identificar
+    // a causa real de regressões de carregamento.
+    // Boot diagnostics — painel laranja no canto inferior esquerdo, visível
+    // enquanto o sistema inicializa. Mostra exatamente em que etapa está.
+    // Remove-se automaticamente depois que os dados carregam (ou após 90s).
+    var _boot = (function() {
+      var panel, logEl, steps = [], t0 = Date.now();
+      function _ensurePanel() {
+        if (panel) return panel;
+        panel = document.createElement('div');
+        panel.id = '_bootPanel';
+        panel.style.cssText = 'position:fixed;left:12px;bottom:12px;z-index:99999;background:rgba(0,0,0,.82);color:#fff;font:12px/1.5 monospace;padding:10px 14px;border-radius:8px;max-width:360px;max-height:220px;overflow:auto;box-shadow:0 4px 20px rgba(0,0,0,.5);';
+        logEl = document.createElement('div');
+        panel.appendChild(logEl);
+        var close = document.createElement('div');
+        close.textContent = '✕ fechar';
+        close.style.cssText = 'cursor:pointer;color:#aaa;font-size:10px;margin-top:6px;';
+        close.onclick = function() { panel && panel.remove(); panel = null; };
+        panel.appendChild(close);
+        (document.body || document.documentElement).appendChild(panel);
+        return panel;
+      }
+      function log(msg, color) {
+        try {
+          _ensurePanel();
+          var row = document.createElement('div');
+          row.style.color = color || '#fff';
+          row.textContent = '+' + (Date.now() - t0) + 'ms ' + msg;
+          logEl.appendChild(row);
+          panel.scrollTop = panel.scrollHeight;
+        } catch(_) {}
+      }
+      var _autoHideTimer = setTimeout(function() {
+        try { panel && panel.remove(); } catch(_) {}
+      }, 90000);
+      return {
+        log: log,
+        ok: function(msg) { log('✓ ' + msg, '#4caf50'); },
+        warn: function(msg) { log('⚠ ' + msg, '#ff9800'); },
+        done: function() {
+          clearTimeout(_autoHideTimer);
+          setTimeout(function() { try { panel && panel.remove(); } catch(_) {} }, 3000);
+        }
+      };
+    })();
+    _boot.log('JS iniciado');
+
+    (function installGlobalErrorReporter() {
+      let shown = 0;
+      function report(msg) {
+        try {
+          if (shown >= 3) return;
+          shown += 1;
+          _boot.warn('ERRO: ' + msg);
+          let bar = document.getElementById('globalErrorBar');
+          if (!bar) {
+            bar = document.createElement('div');
+            bar.id = 'globalErrorBar';
+            bar.style.cssText = 'position:fixed;left:0;right:0;top:0;z-index:9999;background:#b3261e;color:#fff;font:600 13px/1.4 Inter,system-ui,sans-serif;padding:10px 16px;box-shadow:0 4px 16px rgba(0,0,0,.25);';
+            (document.body || document.documentElement).appendChild(bar);
+          }
+          bar.textContent = 'Erro de JavaScript: ' + msg + ' — recarregue a página (F5). Se persistir, copie esta mensagem.';
+        } catch (_) {}
+      }
+      if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+        window.addEventListener('error', e => report((e && e.message) || 'erro desconhecido'));
+        window.addEventListener('unhandledrejection', e => report((e && e.reason && (e.reason.message || e.reason)) || 'promessa rejeitada'));
+      }
+    })();
+
     const icons = {
       process: '<svg viewBox="0 0 24 24" fill="none"><path d="M8 7h12M8 12h12M8 17h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M4 7h.01M4 12h.01M4 17h.01" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>',
       unit: '<svg viewBox="0 0 24 24" fill="none"><path d="M4 20V6l8-3 8 3v14" stroke="currentColor" stroke-width="1.8"/><path d="M9 20v-7h6v7" stroke="currentColor" stroke-width="1.8"/></svg>',
@@ -1925,57 +1996,79 @@
 
     const ui = {
       init() {
-        document.querySelectorAll('.nav button').forEach(btn => {
-          btn.setAttribute('role', 'tab');
-          btn.setAttribute('aria-selected', btn.classList.contains('active') ? 'true' : 'false');
-          btn.tabIndex = btn.classList.contains('active') ? 0 : -1;
-          btn.addEventListener('click', () => ui.setView(btn.dataset.view));
-          btn.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); ui.setView(btn.dataset.view); }
-          });
-        });
-        document.getElementById('refreshBtn').addEventListener('click', loadData);
-        const themeToggle = document.getElementById('themeToggle');
-        const preferredTheme = localStorage.getItem('sigep_theme');
-        state.theme = preferredTheme || 'light';
-        ui.applyTheme(state.theme);
-        themeToggle.addEventListener('click', () => {
-          state.theme = state.theme === 'dark' ? 'light' : 'dark';
-          ui.applyTheme(state.theme);
-          localStorage.setItem('sigep_theme', state.theme);
-        });
-        const menuBtn = document.getElementById('mobileMenuBtn');
-        const appRoot = document.getElementById('appRoot');
-        const overlay = document.getElementById('sidebarOverlay');
-        const toggleSidebar = (open) => {
-          const willOpen = typeof open === 'boolean' ? open : !appRoot.classList.contains('sidebar-open');
-          appRoot.classList.toggle('sidebar-open', willOpen);
-          menuBtn.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
-        };
-        menuBtn.addEventListener('click', () => toggleSidebar());
-        overlay.addEventListener('click', () => toggleSidebar(false));
-        document.getElementById('filtroBuscaIndicador').addEventListener('input', e => { state.buscaIndicador = e.target.value.trim(); renderIndicadores(); });
-        document.getElementById('globalSearch').addEventListener('input', e => {
-          state.search = e.target.value.toLowerCase().trim();
-          render();
-        });
-        ['filtroStatusAcomp', 'filtroTipoProcesso', 'filtroCategoriaIndicador', 'filtroTipoIndicador', 'filtroTipoOperacionalIndicador', 'filtroEixoIndicador', 'filtroAnalistaIndicador', 'filtroGestorIndicador', 'filtroPeriodicidadeIndicador', 'filtroPeriodoIndicador', 'filtroCompetenciaIndicador', 'filtroStatusPreenchimento'].forEach(id => {
+        // Inicialização à prova de falhas: cada passo é isolado. Um elemento
+        // ausente ou um listener que falha NÃO pode abortar o init inteiro —
+        // senão os botões depois do erro ficam sem handler e o loadData() final
+        // nunca roda, deixando a tela "travada" (regressão recorrente).
+        const safe = (label, fn) => { try { fn(); } catch (e) { console.error('init[' + label + ']:', e); } };
+        const on = (id, event, handler, opts) => {
           const el = document.getElementById(id);
-          if (el) el.addEventListener('change', e => {
-            state[id] = e.target.value;
-            render();
+          if (el) el.addEventListener(event, handler, opts);
+          else console.warn('init: elemento #' + id + ' não encontrado (listener ignorado)');
+          return el;
+        };
+
+        safe('nav', () => {
+          document.querySelectorAll('.nav button').forEach(btn => {
+            btn.setAttribute('role', 'tab');
+            btn.setAttribute('aria-selected', btn.classList.contains('active') ? 'true' : 'false');
+            btn.tabIndex = btn.classList.contains('active') ? 0 : -1;
+            btn.addEventListener('click', () => ui.setView(btn.dataset.view));
+            btn.addEventListener('keydown', (e) => {
+              if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); ui.setView(btn.dataset.view); }
+            });
           });
         });
-        const meusInd = document.getElementById('filtroMeusIndicadores');
-        if (meusInd) meusInd.addEventListener('change', e => { state.filtroMeusIndicadores = e.target.checked; renderIndicadores(); });
-        const drawer = document.getElementById('drawer');
-        drawer.addEventListener('click', e => {
-          if (e.target === drawer) ui.closeDrawer();
+
+        safe('refresh', () => on('refreshBtn', 'click', loadData));
+
+        safe('theme', () => {
+          const preferredTheme = localStorage.getItem('sigep_theme');
+          state.theme = preferredTheme || 'light';
+          ui.applyTheme(state.theme);
+          on('themeToggle', 'click', () => {
+            state.theme = state.theme === 'dark' ? 'light' : 'dark';
+            ui.applyTheme(state.theme);
+            localStorage.setItem('sigep_theme', state.theme);
+          });
         });
-        document.addEventListener('keydown', e => {
-          if (e.key === 'Escape') { ui.closeDrawer(); closeActionMenus(); }
+
+        safe('sidebar', () => {
+          const menuBtn = document.getElementById('mobileMenuBtn');
+          const appRoot = document.getElementById('appRoot');
+          const overlay = document.getElementById('sidebarOverlay');
+          const toggleSidebar = (open) => {
+            if (!appRoot) return;
+            const willOpen = typeof open === 'boolean' ? open : !appRoot.classList.contains('sidebar-open');
+            appRoot.classList.toggle('sidebar-open', willOpen);
+            if (menuBtn) menuBtn.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+          };
+          if (menuBtn) menuBtn.addEventListener('click', () => toggleSidebar());
+          if (overlay) overlay.addEventListener('click', () => toggleSidebar(false));
         });
-        document.addEventListener('click', closeActionMenus);
+
+        safe('buscaIndicador', () => on('filtroBuscaIndicador', 'input', e => { state.buscaIndicador = e.target.value.trim(); renderIndicadores(); }));
+        safe('globalSearch', () => on('globalSearch', 'input', e => { state.search = e.target.value.toLowerCase().trim(); render(); }));
+
+        safe('filtros', () => {
+          ['filtroStatusAcomp', 'filtroTipoProcesso', 'filtroCategoriaIndicador', 'filtroTipoIndicador', 'filtroTipoOperacionalIndicador', 'filtroEixoIndicador', 'filtroAnalistaIndicador', 'filtroGestorIndicador', 'filtroPeriodicidadeIndicador', 'filtroPeriodoIndicador', 'filtroCompetenciaIndicador', 'filtroStatusPreenchimento'].forEach(id => {
+            on(id, 'change', e => { state[id] = e.target.value; render(); });
+          });
+        });
+
+        safe('meusIndicadores', () => on('filtroMeusIndicadores', 'change', e => { state.filtroMeusIndicadores = e.target.checked; renderIndicadores(); }));
+        safe('drawer', () => on('drawer', 'click', e => { if (e.target === document.getElementById('drawer')) ui.closeDrawer(); }));
+
+        safe('global-keys', () => {
+          document.addEventListener('keydown', e => {
+            if (e.key === 'Escape') { ui.closeDrawer(); closeActionMenus(); }
+          });
+          document.addEventListener('click', closeActionMenus);
+        });
+
+        _boot.ok('ui.init() concluído — listeners anexados');
+        // O carregamento de dados precisa rodar SEMPRE, mesmo que algo acima
+        // tenha falhado — caso contrário a tela fica parada sem dados.
         loadData();
       },
       applyTheme(theme) {
@@ -2155,27 +2248,67 @@
     }
 
     function loadData() {
+      _boot.log('loadData() iniciado');
       setLoading();
       showSectionSkeletons();
       asyncUi.start('Sincronizando com Google Sheets...');
+      let settled = false;
+      const showLoadError = (msg) => {
+        // Não destruir o shell (topbar/nav/views) para que a navegação e o
+        // botão de tentar novamente continuem funcionando.
+        const banner = `<div class="empty"><strong>Não foi possível carregar os dados do SIGEP-HUC.</strong><br>${escapeHtml(msg)}<br><button class="btn" style="margin-top:12px" onclick="loadData()">Tentar novamente</button></div>`;
+        ['acompGrid', 'processGrid', 'mapeamentoBoard', 'indicatorGrid'].forEach(id => {
+          const el = document.getElementById(id);
+          if (el) el.innerHTML = banner;
+        });
+      };
+
+      // Verifica se google.script.run está disponível (pode estar ausente se a página
+      // for aberta fora do contexto de web app do Apps Script).
+      if (typeof google === 'undefined' || !google.script || !google.script.run) {
+        _boot.warn('google.script.run indisponível — verifique se está acessando via URL do Apps Script');
+        showLoadError('Ambiente Apps Script não detectado. Acesse o sistema pela URL do web app implantado.');
+        return;
+      }
+      _boot.log('google.script.run disponível — chamando getSigepData()');
+
+      // Watchdog: se o servidor não responder em 45s, paramos de esperar e
+      // oferecemos "Tentar novamente" — evita a tela ficar eternamente parada.
+      const watchdog = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        asyncUi.finish();
+        _boot.warn('watchdog: 45s sem resposta do servidor');
+        showLoadError('O servidor demorou para responder (tempo esgotado). Verifique sua conexão e tente novamente.');
+        showToast('O carregamento demorou demais. Tente novamente.', 'warning');
+      }, 45000);
       google.script.run
         .withSuccessHandler(payload => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(watchdog);
           asyncUi.finish();
-          state.data = normalizeDataPayload(payload);
-          refreshDashboardFromLocal();
-          hydrateFilters();
-          render();
+          _boot.ok('dados recebidos do servidor');
+          try {
+            state.data = normalizeDataPayload(payload);
+            refreshDashboardFromLocal();
+            hydrateFilters();
+            render();
+            _boot.done();
+          } catch (e) {
+            _boot.warn('erro ao processar dados: ' + (e && e.message ? e.message : e));
+            console.error('Falha ao processar dados carregados:', e);
+            showLoadError('Erro ao processar os dados recebidos: ' + (e && e.message ? e.message : e));
+          }
         })
         .withFailureHandler(err => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(watchdog);
           asyncUi.finish();
           const msg = (err && (err.message || err)) || 'Erro desconhecido';
-          // Não destruir o shell (topbar/nav/views) para que a navegação e o
-          // botão de tentar novamente continuem funcionando.
-          const banner = `<div class="empty"><strong>Não foi possível carregar os dados do SIGEP-HUC.</strong><br>${escapeHtml(msg)}<br><button class="btn" style="margin-top:12px" onclick="loadData()">Tentar novamente</button></div>`;
-          ['acompGrid', 'processGrid', 'mapeamentoBoard', 'indicatorGrid'].forEach(id => {
-            const el = document.getElementById(id);
-            if (el) el.innerHTML = banner;
-          });
+          _boot.warn('falha do servidor: ' + msg);
+          showLoadError(msg);
           showToast('Erro ao carregar o SIGEP-HUC: ' + msg, 'error');
         })
         .getSigepData();
@@ -4971,7 +5104,16 @@ Falhas: ${failed}${firstError}`);
       return Array.from(suggestions);
     }
 window.ui = ui;
-    ui.init();
+    _boot.ok('todas as funções definidas — chamando ui.init()');
+    // Garante o boot mesmo que init lance algo inesperado: ao menos os dados
+    // são carregados e a tela não fica parada sem explicação.
+    try {
+      ui.init();
+    } catch (e) {
+      _boot.warn('ui.init() lançou exceção: ' + (e && e.message ? e.message : e));
+      console.error('Falha na inicialização da interface:', e);
+      try { loadData(); } catch (_) {}
+    }
   </script>
 </body>
 </html>
