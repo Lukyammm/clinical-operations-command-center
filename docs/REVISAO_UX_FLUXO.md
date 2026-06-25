@@ -142,11 +142,26 @@ Assim o lançamento manual deixa de depender de importação de planilha externa
 - [x] Cálculo de resultado e status automáticos + justificativa de desvio.
 - [x] Atualização do texto sobre digitação manual.
 
-**Importante (próximas iterações)**
-- [ ] Barra de fluxo guiado entre módulos.
-- [ ] Componente único de modal/formulário.
-- [ ] Padrões únicos de botão/card/tabela em CSS, reduzindo `!important`.
-- [ ] Glossário e revisão final de rótulos.
+**Importante (entregue nesta iteração)**
+- [x] **Barra de fluxo guiado entre módulos** — stepper "Cadastrar → Mapear →
+  Acompanhar → Lançar dados → Administrar" no topo de cada tela, destacando a etapa
+  atual e navegável por clique (`.flow-bar` + `renderFlowBar`).
+- [x] **Componente de controle de formulário único** — regra canônica `.field-control`
+  unifica input/select/textarea de formulários inline, diálogos e da planilha de
+  lançamento, com um único estado de foco (antes o diálogo não tinha foco visível e
+  havia 3 blocos de estilo duplicados com cores fixas). Agora usa tokens (`--border`,
+  `--card`, `--text`, `--primary`).
+- [x] **Padrão único de campos** consolidando os estilos divergentes (parte de
+  "padrões únicos de CSS").
+- [x] **Glossário e revisão de rótulos** — `docs/GLOSSARIO.md` com termos canônicos;
+  "Dashboard executivo" → "Painel executivo" na interface.
+
+**Importante — pendente (requer QA visual no Web App publicado)**
+- [ ] Redução ampla de `!important` (≈138 usos): a maioria são overrides de tema
+  escuro e da media query de redução de movimento (acessibilidade — devem permanecer).
+  Reduzir os demais exige renderização visual (o app é Apps Script e não pode ser
+  testado visualmente aqui); fica para PR dedicado com QA.
+- [ ] Padronização única de botões/cards/tabelas além dos campos de formulário.
 
 **Melhoria futura**
 - [ ] Refatorar frontend em componentes e separar CSS/JS do `Index.html`.

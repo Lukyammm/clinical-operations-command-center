@@ -281,6 +281,29 @@
       font: inherit;
       color: inherit;
     }
+    /* Controle de formulário canônico (padrão único de input/select/textarea).
+       Usado por formulários inline (.edit-form), diálogos (.system-dialog) e a planilha de lançamento (.ledger). */
+    .field-control,
+    .edit-form input, .edit-form select, .edit-form textarea,
+    .system-dialog-input,
+    .ledger-table .ledger-input {
+      width: 100%; box-sizing: border-box;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 11px;
+      color: var(--text);
+      background: var(--card);
+      font-variant-numeric: tabular-nums;
+      transition: border-color var(--ease), box-shadow var(--ease), background-color var(--ease);
+    }
+    .field-control:focus,
+    .edit-form input:focus, .edit-form select:focus, .edit-form textarea:focus,
+    .system-dialog-input:focus,
+    .ledger-table .ledger-input:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(31, 78, 121, .16);
+    }
 
     :focus-visible {
       outline: 3px solid var(--focus-ring);
@@ -799,12 +822,7 @@
     .history-table td.competencia-miss { color: var(--danger); font-weight: 800; }
     .ledger-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 12px; }
     .ledger-table td { vertical-align: middle; }
-    .ledger-table .ledger-input {
-      width: 100%; min-width: 84px; box-sizing: border-box; padding: 7px 9px;
-      border: 1px solid var(--border); border-radius: 8px; background: var(--card);
-      color: inherit; font-size: 13px; font-variant-numeric: tabular-nums;
-    }
-    .ledger-table .ledger-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(31, 78, 121, .14); }
+    .ledger-table .ledger-input { min-width: 84px; padding: 7px 9px; border-radius: 8px; font-size: 13px; }
     .ledger-table .ledger-actions { text-align: right; white-space: nowrap; }
     .ledger-table .pill { padding: 0 6px; font-size: 10px; }
     .history-status {
@@ -867,9 +885,7 @@
     .edit-form-pair { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
     .edit-form-group-title { margin:0; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:#56718f; font-weight:800; }
     .edit-form label { display:grid; gap:6px; font-size:12px; color:#56718f; font-weight:600; }
-    .edit-form input, .edit-form select, .edit-form textarea { width:100%; border:1px solid #c9daee; border-radius:10px; padding:10px 11px; color:var(--text); background:#fff; transition:border-color var(--ease), box-shadow var(--ease), background-color var(--ease); }
-    .edit-form select { appearance:none; background-image:linear-gradient(45deg, transparent 50%, #5c7591 50%), linear-gradient(135deg, #5c7591 50%, transparent 50%), linear-gradient(to right, #fff, #fff); background-position:calc(100% - 17px) calc(1em + 1px), calc(100% - 12px) calc(1em + 1px), 100% 0; background-size:5px 5px,5px 5px,2.9em 100%; background-repeat:no-repeat; padding-right:36px; }
-    .edit-form input:focus, .edit-form select:focus, .edit-form textarea:focus { outline:none; border-color:#8fb4dc; box-shadow:0 0 0 3px rgba(31,111,189,.16); background:#fdfefe; }
+    .edit-form select { appearance:none; background-image:linear-gradient(45deg, transparent 50%, #5c7591 50%), linear-gradient(135deg, #5c7591 50%, transparent 50%), linear-gradient(to right, transparent, transparent); background-position:calc(100% - 17px) calc(1em + 1px), calc(100% - 12px) calc(1em + 1px), 100% 0; background-size:5px 5px,5px 5px,2.9em 100%; background-repeat:no-repeat; padding-right:36px; }
     .edit-form textarea { min-height:94px; resize:vertical; }
     .edit-form-actions { display:flex; gap:10px; justify-content:flex-end; padding-top:2px; }
     .edit-form-note { border:1px solid #d6e6f7; background:#f2f8ff; color:#365375; font-size:12px; border-radius:12px; padding:10px 12px; margin:0; }
@@ -1003,7 +1019,7 @@
     .system-dialog-card { position:relative; z-index:221; width:min(520px, calc(100vw - 32px)); max-height:calc(100vh - 40px); overflow:auto; background:var(--modal-surface); border:1px solid var(--modal-line); border-radius:14px; box-shadow:0 24px 54px rgba(8, 24, 43, .32); padding:18px; animation: modalPop var(--duration-base) var(--ease-emphasized); display:grid; gap:12px; }
     .system-dialog-title { margin:0; font-size:16px; color:var(--modal-title); }
     .system-dialog-message { margin:0; color:var(--text); font-size:14px; line-height:1.5; }
-    .system-dialog-input { width:100%; border:1px solid #c9daee; border-radius:10px; padding:10px 11px; color:var(--text); background:#fff; }
+    .system-dialog-input textarea, .system-dialog-form textarea { min-height:90px; resize:vertical; }
     .system-dialog-form { display:grid; gap:10px; }
     .system-dialog-form label { display:grid; gap:6px; color:var(--text-muted); font-size:12px; font-weight:700; }
     .system-dialog-actions { display:flex; justify-content:flex-end; gap:10px; }
@@ -1576,6 +1592,21 @@
     /* Dica contextual */
     .view-tip { display:flex; align-items:center; gap:12px; justify-content:space-between; background:var(--primary-2); border:1px solid var(--primary-3); color:var(--primary); border-radius:var(--radius-sm); padding:10px 14px; margin-bottom:14px; font-size:.86rem; }
     .view-tip-close { background:transparent; border:none; color:inherit; font-size:1.15rem; cursor:pointer; line-height:1; padding:0 4px; }
+    /* Barra de fluxo guiado entre módulos */
+    .flow-bar { display:flex; align-items:stretch; gap:4px; overflow-x:auto; padding:6px; margin-bottom:14px; background:var(--card); border:1px solid var(--border); border-radius:var(--radius-md); scrollbar-width:thin; }
+    .flow-step { display:flex; align-items:center; gap:10px; flex:1 1 0; min-width:150px; padding:9px 12px; background:transparent; border:1px solid transparent; border-radius:var(--radius-sm); cursor:pointer; color:var(--muted); text-align:left; transition:background var(--ease), color var(--ease), border-color var(--ease); }
+    .flow-step:hover { background:var(--primary-2); color:var(--primary); }
+    .flow-step-num { flex:0 0 auto; display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; border-radius:50%; border:1.5px solid currentColor; font-size:.8rem; font-weight:700; }
+    .flow-step-text { display:flex; flex-direction:column; line-height:1.2; min-width:0; }
+    .flow-step-text b { font-size:.85rem; color:var(--text); white-space:nowrap; }
+    .flow-step-text small { font-size:.72rem; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .flow-step.active { background:var(--primary); border-color:var(--primary); }
+    .flow-step.active .flow-step-num { border-color:#fff; color:#fff; }
+    .flow-step.active .flow-step-text b, .flow-step.active .flow-step-text small { color:#fff; }
+    .flow-step.done { color:var(--primary); }
+    .flow-step.done .flow-step-text b { color:var(--primary); }
+    .flow-step-sep { flex:0 0 auto; align-self:center; width:14px; height:1.5px; background:var(--border); }
+    @media (max-width: 720px) { .flow-step-text small { display:none; } .flow-step { min-width:auto; } }
     [data-theme="dark"] .map-group.gerencial .map-group-body { background:rgba(148,163,184,.10); }
     [data-theme="dark"] .map-group.finalistico .map-group-body { background:rgba(47,158,109,.14); }
     [data-theme="dark"] .map-group.apoio .map-group-body { background:rgba(31,78,121,.20); }
@@ -1644,6 +1675,8 @@
           <button class="btn secondary" id="refreshBtn">Atualizar</button>
         </div>
       </header>
+
+      <nav id="flowBar" class="flow-bar" aria-label="Fluxo operacional do sistema"></nav>
 
       <div id="viewTip" class="view-tip" hidden></div>
 
@@ -2045,7 +2078,7 @@
         });
         document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === view));
         const titles = {
-          dashboard: ['Dashboard executivo', 'Visão consolidada de processos, acompanhamento e indicadores.'],
+          dashboard: ['Painel executivo', 'Visão consolidada de processos, acompanhamento e indicadores.'],
           acompanhamento: ['Acompanhamento', 'Unidades, datas de agenda e evolução das etapas.'],
           processos: ['Modelagem de Processos', 'Pipeline de modelagem, validação e publicação.'],
           mapeamento: ['Mapeamento de processos', 'Cadeia de valor: processos gerenciais, finalísticos e de apoio.'],
@@ -2058,6 +2091,7 @@
         if (pageTitle) pageTitle.textContent = meta[0];
         if (pageSubtitle) pageSubtitle.textContent = meta[1];
         if (view === 'admin' && !state.adminData) loadAdminData();
+        renderFlowBar(view);
         updateViewTip(view);
         const appRoot = document.getElementById('appRoot');
         if (appRoot) appRoot.classList.remove('sidebar-open');
@@ -2899,6 +2933,28 @@
       try { localStorage.setItem('sigep_tip_' + view, '1'); } catch (e) {}
       const el = document.getElementById('viewTip');
       if (el) { el.hidden = true; el.innerHTML = ''; }
+    }
+
+    // Barra de fluxo guiado: mostra a sequência operacional recomendada e destaca a etapa atual.
+    const FLOW_STEPS = [
+      { view: 'processos', label: 'Cadastrar', hint: 'Modele e cadastre processos' },
+      { view: 'mapeamento', label: 'Mapear', hint: 'Posicione na cadeia de valor' },
+      { view: 'acompanhamento', label: 'Acompanhar', hint: 'Acompanhe etapas por unidade' },
+      { view: 'indicadores', label: 'Lançar dados', hint: 'Lance resultados mensais' },
+      { view: 'admin', label: 'Administrar', hint: 'Usuários, gestores e revisão de dados' }
+    ];
+    function renderFlowBar(view) {
+      const el = document.getElementById('flowBar');
+      if (!el) return;
+      const ativoIdx = FLOW_STEPS.findIndex(s => s.view === view);
+      el.innerHTML = FLOW_STEPS.map((s, i) => {
+        const estado = i === ativoIdx ? 'active' : (ativoIdx > -1 && i < ativoIdx ? 'done' : '');
+        const aria = i === ativoIdx ? ' aria-current="step"' : '';
+        return `<button class="flow-step ${estado}" data-view="${s.view}"${aria} onclick="ui.setView('${s.view}')" title="${escapeHtml(s.hint)}">
+          <span class="flow-step-num">${i + 1}</span>
+          <span class="flow-step-text"><b>${escapeHtml(s.label)}</b><small>${escapeHtml(s.hint)}</small></span>
+        </button>`;
+      }).join('<span class="flow-step-sep" aria-hidden="true"></span>');
     }
 
     function renderIndicadores() {
