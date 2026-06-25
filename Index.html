@@ -623,10 +623,12 @@
     .drawer { position: fixed; inset: 0; background: var(--modal-overlay); backdrop-filter: blur(8px) saturate(130%); display: none; align-items: center; justify-content: center; padding: 20px; z-index: 30; animation: modalFade var(--duration-base) var(--ease-standard); }
     .drawer.active { display: flex; }
     .drawer-card { width: min(1680px, calc(100vw - 32px)); max-height: min(95vh, 1100px); overflow: clip; background: var(--modal-surface); border-radius: 14px; border: 1px solid var(--modal-line); box-shadow: 0 24px 54px rgba(8, 24, 43, .32); padding: 22px; animation: modalPop var(--duration-base) var(--ease-emphasized); }
-    .drawer-head { display: flex; justify-content: space-between; gap: 14px; align-items: flex-start; margin: -22px -22px 16px; padding: 18px 22px 14px; background: linear-gradient(180deg,#ffffff 0%, #f7fbff 100%); border-bottom: 1px solid var(--modal-line); }
+    .drawer-head { display: flex; justify-content: space-between; gap: 14px; align-items: flex-start; margin: -22px -22px 16px; padding: 18px 22px 14px; background: var(--modal-surface); border-bottom: 1px solid var(--modal-line); border-radius: 12px 12px 0 0; }
     .drawer-head h3 { margin: 0; font-size: 22px; letter-spacing: -.02em; color: var(--modal-title); }
     #drawerSubtitle { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
-    .close { background: #f2f7fd; border: 1px solid var(--modal-line); width: 38px; height: 38px; border-radius: 12px; cursor: pointer; font-size: 22px; line-height: 1; color: var(--text); transition: all var(--ease); }
+    .close { background: var(--modal-soft); border: 1px solid var(--modal-line); width: 36px; height: 36px; border-radius: 10px; cursor: pointer; display: grid; place-items: center; color: var(--muted); transition: background var(--ease), border-color var(--ease), color var(--ease), transform var(--ease); }
+    .close svg { width: 18px; height: 18px; pointer-events: none; }
+    .close:hover { background: var(--danger-bg); border-color: var(--color-border-danger); color: var(--danger); transform: scale(1.06); }
     .close:hover { border-color: #b9cde4; background: #eaf2fc; color: var(--ink); transform: translateY(-1px); }
 
     .admin-grid { display:grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap:14px; }
@@ -1024,13 +1026,28 @@
     @keyframes toastIn { from { opacity: 0; transform: translateY(12px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
     #systemDialog { position:fixed; inset:0; display:none; align-items:center; justify-content:center; padding:20px; z-index:220; background:var(--modal-overlay); backdrop-filter: blur(8px) saturate(130%); animation: modalFade var(--duration-base) var(--ease-standard); }
     #systemDialog.active { display:flex; }
-    .system-dialog-card { position:relative; z-index:221; width:min(520px, calc(100vw - 32px)); max-height:calc(100vh - 40px); overflow:auto; background:var(--modal-surface); border:1px solid var(--modal-line); border-radius:14px; box-shadow:0 24px 54px rgba(8, 24, 43, .32); padding:18px; animation: modalPop var(--duration-base) var(--ease-emphasized); display:grid; gap:12px; }
-    .system-dialog-title { margin:0; font-size:16px; color:var(--modal-title); }
-    .system-dialog-message { margin:0; color:var(--text); font-size:14px; line-height:1.5; }
+    .system-dialog-card { position:relative; z-index:221; width:min(520px, calc(100vw - 32px)); max-height:calc(100vh - 40px); overflow:auto; background:var(--modal-surface); border:1px solid var(--modal-line); border-radius:16px; box-shadow:0 28px 60px rgba(8, 24, 43, .34); padding:24px; animation: modalPop var(--duration-base) var(--ease-emphasized); display:grid; gap:16px; }
+    .system-dialog-card.wide { width:min(720px, calc(100vw - 32px)); }
+    .system-dialog-head { display:flex; align-items:flex-start; gap:14px; }
+    .system-dialog-icon { flex:0 0 auto; width:44px; height:44px; border-radius:12px; display:grid; place-items:center; }
+    .system-dialog-icon svg { width:22px; height:22px; }
+    .system-dialog-icon.info  { background:var(--color-primary-soft); color:var(--primary); }
+    .system-dialog-icon.warn  { background:var(--warning-bg); color:var(--warning); }
+    .system-dialog-icon.danger { background:var(--danger-bg); color:var(--danger); }
+    .system-dialog-head-text { display:grid; gap:4px; }
+    .system-dialog-title { margin:0; font-size:18px; font-weight:700; color:var(--modal-title); line-height:1.25; }
+    .system-dialog-message { margin:0; color:var(--muted); font-size:14px; line-height:1.55; }
     .system-dialog-input textarea, .system-dialog-form textarea { min-height:90px; resize:vertical; }
-    .system-dialog-form { display:grid; gap:10px; }
-    .system-dialog-form label { display:grid; gap:6px; color:var(--text-muted); font-size:12px; font-weight:700; }
-    .system-dialog-actions { display:flex; justify-content:flex-end; gap:10px; }
+    .system-dialog-form { display:grid; gap:12px; }
+    .system-dialog-form.wide { grid-template-columns:repeat(2, minmax(0,1fr)); gap:12px 16px; }
+    .system-dialog-form label { display:grid; gap:6px; color:var(--muted); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; }
+    .system-dialog-form label.full,
+    .system-dialog-subhead { grid-column:1 / -1; }
+    .system-dialog-subhead { margin:4px 0 0; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); border-bottom:1px solid var(--modal-line); padding-bottom:6px; }
+    .system-dialog-actions { display:flex; justify-content:flex-end; gap:10px; padding-top:6px; border-top:1px solid var(--modal-line); margin-top:2px; }
+    .btn.danger { background:var(--danger); border-color:var(--danger); color:#fff; }
+    .btn.danger:hover { filter:brightness(.9); transform:translateY(-1px); }
+    .btn.danger:active { filter:brightness(.85); transform:translateY(0); }
 
     @keyframes modalFade {
       from { opacity: 0; }
@@ -1780,7 +1797,7 @@
     <div class="drawer-card" role="dialog" aria-modal="true" aria-labelledby="drawerTitle">
       <div class="drawer-head">
         <div><h3 id="drawerTitle">Detalhes</h3><p id="drawerSubtitle"></p></div>
-        <button class="close" onclick="ui.closeDrawer()" aria-label="Fechar painel">×</button>
+        <button class="close" onclick="ui.closeDrawer()" aria-label="Fechar painel"><svg viewBox="0 0 24 24" fill="none"><path d="M18 6 6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
       </div>
       <div id="drawerContent" class="drawer-body"></div>
     </div>
@@ -2139,36 +2156,52 @@
         confirm(message) {
           return ui.dialog._open({ type: 'confirm', title: 'Confirmar ação', message });
         },
+        danger(message, { title = 'Ação irreversível', confirmText = 'Excluir' } = {}) {
+          return ui.dialog._open({ type: 'danger', title, message, confirmText });
+        },
         prompt(message, defaultValue) {
           return ui.dialog._open({ type: 'prompt', title: 'Informação necessária', message, defaultValue: defaultValue || '' });
         },
-
-        form({ title = 'Novo cadastro', description = '', fields = [], confirmText = 'Salvar' } = {}) {
-          return ui.dialog._open({ type: 'form', title, message: description, fields, confirmText });
+        form({ title = 'Novo cadastro', description = '', fields = [], confirmText = 'Salvar', wide = false } = {}) {
+          return ui.dialog._open({ type: 'form', title, message: description, fields, confirmText, wide });
         },
-        _open({ type, title, message, defaultValue = '', fields = [], confirmText = 'Confirmar' }) {
+        _open({ type, title, message, defaultValue = '', fields = [], confirmText = 'Confirmar', wide = false }) {
           return new Promise(resolve => {
             const host = document.getElementById('systemDialog');
+            const isDanger = type === 'danger';
             const isForm = type === 'form';
-            const inputHtml = type === 'prompt' ? `<input class="system-dialog-input" id="systemDialogInput" type="text" value="${escapeHtml(defaultValue)}">` : '';
-            const formHtml = isForm ? `<form id="systemDialogForm" class="system-dialog-form">${(fields || []).map(field => {
+            // Ícone por tipo de diálogo
+            const iconMap = {
+              confirm: `<svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/><path d="M12 8v4M12 16h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`,
+              danger:  `<svg viewBox="0 0 24 24" fill="none"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M12 9v4M12 17h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`,
+              prompt:  `<svg viewBox="0 0 24 24" fill="none"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+            };
+            const iconClass = isDanger ? 'danger' : 'info';
+            const iconSvg = iconMap[isDanger ? 'danger' : type] || '';
+            const headHtml = iconSvg
+              ? `<div class="system-dialog-head"><div class="system-dialog-icon ${iconClass}">${iconSvg}</div><div class="system-dialog-head-text"><h4 class="system-dialog-title" id="systemDialogTitle">${escapeHtml(title)}</h4>${message ? `<p class="system-dialog-message">${escapeHtml(message)}</p>` : ''}</div></div>`
+              : `<h4 class="system-dialog-title" id="systemDialogTitle">${escapeHtml(title)}</h4>${message ? `<p class="system-dialog-message">${escapeHtml(message)}</p>` : ''}`;
+            const inputHtml = type === 'prompt' ? `<input class="system-dialog-input field-control" id="systemDialogInput" type="text" value="${escapeHtml(defaultValue)}">` : '';
+            const wideForm = isForm && wide;
+            const formHtml = isForm ? `<form id="systemDialogForm" class="system-dialog-form${wideForm ? ' wide' : ''}">${(fields || []).map(field => {
               const fType = (field.type || 'text').toLowerCase();
               const fName = escapeHtml(field.name || 'campo');
               const fLabel = escapeHtml(field.label || field.name || 'Campo');
               const fRequired = field.required ? 'required' : '';
+              const fullClass = (fType === 'textarea' || fType === 'heading') ? ' class="full"' : '';
               if (fType === 'heading') return `<p class="system-dialog-subhead">${fLabel}</p>`;
-              if (fType === 'textarea') return `<label>${fLabel}<textarea class="system-dialog-input" name="${fName}" ${fRequired} placeholder="${escapeHtml(field.placeholder || '')}">${escapeHtml(field.value || '')}</textarea></label>`;
-              if (fType === 'select') return `<label>${fLabel}<select class="system-dialog-input" name="${fName}" ${fRequired}>${(field.options || []).map(opt => { const v = String(opt || ''); return `<option value="${escapeHtml(v)}" ${String(field.value || '')===v?'selected':''}>${escapeHtml(v || 'Selecione')}</option>`; }).join('')}</select></label>`;
-              return `<label>${fLabel}<input class="system-dialog-input" name="${fName}" type="${escapeHtml(fType)}" value="${escapeHtml(field.value || '')}" ${fRequired} placeholder="${escapeHtml(field.placeholder || '')}"></label>`;
+              if (fType === 'textarea') return `<label${fullClass}>${fLabel}<textarea class="system-dialog-input field-control" name="${fName}" ${fRequired} placeholder="${escapeHtml(field.placeholder || '')}">${escapeHtml(field.value || '')}</textarea></label>`;
+              if (fType === 'select') return `<label>${fLabel}<select class="system-dialog-input field-control" name="${fName}" ${fRequired}>${(field.options || []).map(opt => { const v = String(opt || ''); return `<option value="${escapeHtml(v)}" ${String(field.value || '')===v?'selected':''}>${escapeHtml(v || 'Selecione')}</option>`; }).join('')}</select></label>`;
+              return `<label>${fLabel}<input class="system-dialog-input field-control" name="${fName}" type="${escapeHtml(fType)}" value="${escapeHtml(field.value || '')}" ${fRequired} placeholder="${escapeHtml(field.placeholder || '')}"></label>`;
             }).join('')}</form>` : '';
+            const confirmClass = isDanger ? 'btn danger' : 'btn';
             const actionsHtml = type === 'alert'
               ? `<button class="btn" data-role="confirm">Ok</button>`
-              : `<button class="btn secondary" data-role="cancel">Cancelar</button><button class="btn" data-role="confirm">${escapeHtml(confirmText || 'Confirmar')}</button>`;
-            host.innerHTML = `<div class="system-dialog-card" role="dialog" aria-modal="true" aria-labelledby="systemDialogTitle"><h4 class="system-dialog-title" id="systemDialogTitle">${escapeHtml(title)}</h4><p class="system-dialog-message">${escapeHtml(message || '')}</p>${inputHtml}${formHtml}<div class="system-dialog-actions">${actionsHtml}</div></div>`;
+              : `<button class="btn secondary" data-role="cancel">Cancelar</button><button class="${confirmClass}" data-role="confirm">${escapeHtml(confirmText || 'Confirmar')}</button>`;
+            host.innerHTML = `<div class="system-dialog-card${wide ? ' wide' : ''}" role="dialog" aria-modal="true" aria-labelledby="systemDialogTitle">${headHtml}${inputHtml}${formHtml}<div class="system-dialog-actions">${actionsHtml}</div></div>`;
             host.classList.add('active');
             host.setAttribute('aria-hidden', 'false');
             document.body.style.overflow = 'hidden';
-            const card = host.querySelector('.system-dialog-card');
             const input = host.querySelector('#systemDialogInput');
             const close = (result) => {
               host.classList.remove('active');
@@ -2193,7 +2226,7 @@
             };
             host.addEventListener('click', handleBackdropClick);
             host.querySelector('[data-role="confirm"]').addEventListener('click', () => {
-              if (type === 'form') {
+              if (isForm) {
                 const form = host.querySelector('#systemDialogForm');
                 if (form && !form.reportValidity()) return;
                 close(form ? Object.fromEntries(new FormData(form).entries()) : {});
@@ -2718,7 +2751,7 @@
 
     async function excluirMapeamentoUi(item) {
       if (!item || !item.ID_MAPEAMENTO) return;
-      if (!await ui.dialog.confirm(`Excluir "${item.NOME_PROCESSO}" do mapa?`)) return;
+      if (!await ui.dialog.danger(`Excluir "${item.NOME_PROCESSO}" do mapa? Esta ação não pode ser desfeita.`)) return;
       asyncUi.start('Sincronizando com Google Sheets...');
       google.script.run
         .withSuccessHandler(async () => {
@@ -3380,7 +3413,7 @@ function getIndicatorUnit(ind) {
 
     async function excluirAcompanhamentoUi(item) {
       if (!item || !item.ID_ACOMPANHAMENTO) return;
-      if (!await ui.dialog.confirm(`Excluir o acompanhamento ${item.ID_ACOMPANHAMENTO}? Esta ação não pode ser desfeita.`)) return;
+      if (!await ui.dialog.danger(`Excluir o acompanhamento ${item.ID_ACOMPANHAMENTO}? Esta ação não pode ser desfeita.`)) return;
       const values = await ui.dialog.form({
         title: 'Excluir acompanhamento',
         description: 'Informe o motivo da exclusão para auditoria.',
@@ -3553,7 +3586,7 @@ function getIndicatorUnit(ind) {
 
     async function excluirProcessoUi(item) {
       if (!item || !item.ID_PROCESSO) return;
-      if (!await ui.dialog.confirm(`Excluir o processo ${item.ID_PROCESSO}? Esta ação não pode ser desfeita.`)) return;
+      if (!await ui.dialog.danger(`Excluir o processo "${item.ID_PROCESSO}"? Esta ação não pode ser desfeita.`)) return;
       const values = await ui.dialog.form({
         title: 'Excluir processo',
         description: 'Informe o motivo da exclusão para auditoria.',
@@ -3992,7 +4025,7 @@ function getIndicatorUnit(ind) {
 
     async function excluirMetaPeriodoUi(ind, idMeta) {
       if (!idMeta) return;
-      if (!await ui.dialog.confirm('Excluir esta meta por período?')) return;
+      if (!await ui.dialog.danger('Excluir esta meta por período? Esta ação não pode ser desfeita.')) return;
       asyncUi.start('Sincronizando com Google Sheets...');
       google.script.run
         .withSuccessHandler(() => {
@@ -4612,6 +4645,7 @@ function getIndicatorUnit(ind) {
         title: 'Novo indicador',
         description: 'Informe identificação, meta e rastreabilidade para criar o indicador.',
         confirmText: 'Criar',
+        wide: true,
         fields: [
           { name: 'NOME_INDICADOR', label: 'Nome do indicador', required: true },
           { name: 'TIPO_INDICADOR', label: 'Tipo do indicador', required: true },
@@ -4658,7 +4692,7 @@ function getIndicatorUnit(ind) {
 
     async function excluirIndicadorUi(item) {
       if (!item || !item.ID_INDICADOR) return;
-      if (!await ui.dialog.confirm(`Excluir o indicador ${item.ID_INDICADOR}? Esta ação não pode ser desfeita.`)) return;
+      if (!await ui.dialog.danger(`Excluir o indicador "${item.ID_INDICADOR}"? Esta ação não pode ser desfeita.`)) return;
       const values = await ui.dialog.form({
         title: 'Excluir indicador',
         description: 'Informe o motivo da exclusão para auditoria.',
@@ -4841,6 +4875,7 @@ function getIndicatorUnit(ind) {
         title: isEditing ? 'Editar usuário' : 'Novo usuário',
         description: 'Preencha os dados em um único formulário para salvar o usuário.',
         confirmText: isEditing ? 'Salvar alterações' : 'Cadastrar usuário',
+        wide: true,
         fields: [
           { name: 'EMAIL', label: 'Email do usuário', type: 'email', required: true, value: u.EMAIL || '', placeholder: 'usuario@huc.gov.br' },
           { name: 'NOME', label: 'Nome completo', type: 'text', required: true, value: u.NOME || '', placeholder: 'Ex: Maria da Silva' },
@@ -4880,7 +4915,7 @@ function getIndicatorUnit(ind) {
     }
 
     async function excluirUsuarioUi(email){
-      if(!await ui.dialog.confirm('Excluir usuário '+email+'?')) return;
+      if(!await ui.dialog.danger('Excluir o usuário '+email+'? Esta ação não pode ser desfeita.')) return;
       asyncUi.start('Excluindo usuário...');
       google.script.run
         .withSuccessHandler(()=>{ asyncUi.finish(); loadAdminData(); showAdminUsers(); showToast('Usuário excluído com sucesso.', 'success'); })
@@ -4930,6 +4965,7 @@ function getIndicatorUnit(ind) {
         title: isEditing ? 'Editar gestor' : 'Novo gestor',
         description: 'Dados do gestor. Campos sensíveis ficam restritos a administradores.',
         confirmText: isEditing ? 'Salvar alterações' : 'Cadastrar gestor',
+        wide: true,
         fields: [
           { type: 'heading', label: 'Identificação' },
           { name: 'NOME', label: 'Nome', required: true, value: g.NOME || '' },
@@ -4960,7 +4996,7 @@ function getIndicatorUnit(ind) {
 
     async function excluirGestorUi(id, nome) {
       if (!id) return;
-      if (!await ui.dialog.confirm('Excluir o gestor ' + (nome || id) + '?')) return;
+      if (!await ui.dialog.danger('Excluir o gestor ' + (nome || id) + '? Esta ação não pode ser desfeita.')) return;
       asyncUi.start('Excluindo gestor...');
       google.script.run
         .withSuccessHandler(() => { asyncUi.finish(); loadAdminData(); showAdminGestores(); showToast('Gestor excluído.', 'success'); })
@@ -5009,7 +5045,7 @@ function getIndicatorUnit(ind) {
     }
 
     async function excluirSetorUi(id){
-      if(!id||!await ui.dialog.confirm('Excluir setor '+id+'?')) return;
+      if(!id||!await ui.dialog.danger('Excluir o setor '+id+'? Esta ação não pode ser desfeita.')) return;
       asyncUi.start('Excluindo setor...');
       google.script.run
         .withSuccessHandler(()=>{ asyncUi.finish(); loadAdminData(); showAdminSetores(); showToast('Setor excluído com sucesso.', 'success'); })
