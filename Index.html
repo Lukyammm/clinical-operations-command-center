@@ -683,13 +683,33 @@
 
     .indicator-workspace { display: grid; grid-template-columns: 1fr; gap: 16px; align-items: start; }
     .indicator-workspace > * { min-width: 0; }
-    .indicator-process-shell { border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); padding: 16px; display: grid; gap: 12px; }
+    .indicator-process-shell { position: relative; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); padding: 16px; display: grid; gap: 12px; }
     .indicator-process-head { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
     .indicator-process-head h4 { margin: 0; font-size: 14px; color: var(--ink); font-weight: 650; }
     .indicator-process-count { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface-soft); color: var(--muted); padding: 4px 10px; font-size: 11.5px; font-weight: 600; white-space: nowrap; }
     .indicator-process-body { display: grid; gap: 12px; }
     .indicator-process-tabs { display: flex; gap: 8px; flex-wrap: wrap; max-height: none; overflow: auto; padding-right: 2px; padding-bottom: 4px; }
     .indicator-workspace .indicator-process-tabs { flex-direction: row; flex-wrap: wrap; }
+
+    /* Resumo minimizado dos processos */
+    .indicator-process-compact { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .indicator-process-more { display: inline-flex; align-items: center; justify-content: center; min-width: 38px; height: 38px; padding: 0 12px; border: 1px dashed var(--line-strong); background: var(--surface-soft); color: var(--muted); border-radius: var(--radius-sm); font-size: 12.5px; font-weight: 700; white-space: nowrap; }
+    .indicator-process-seeall { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--primary-border); background: var(--primary-soft); color: var(--primary); border-radius: var(--radius-sm); padding: 9px 14px; font-size: 12.5px; font-weight: 650; cursor: pointer; white-space: nowrap; transition: background var(--ease), border-color var(--ease); margin-left: auto; }
+    .indicator-process-seeall:hover { background: var(--surface); border-color: var(--primary); }
+    .indicator-process-seeall svg { width: 14px; height: 14px; }
+    .indicator-process-empty { font-size: 12.5px; color: var(--muted); }
+
+    /* Painel flutuante de processos */
+    .indicator-process-panel { position: absolute; top: calc(100% - 8px); left: 16px; right: 16px; z-index: 12; background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--radius); box-shadow: var(--shadow-md); padding: 14px; display: grid; gap: 12px; max-height: 420px; overflow: hidden; animation: modalPop var(--duration-fast) var(--ease-emphasized); }
+    .indicator-process-panel-head { display: flex; align-items: center; gap: 10px; justify-content: space-between; }
+    .indicator-process-panel-search { position: relative; flex: 1 1 auto; min-width: 0; }
+    .indicator-process-panel-search input { width: 100%; border: 1px solid var(--line-strong); background: var(--surface); border-radius: var(--radius-sm); padding: 9px 12px 9px 36px; font-size: 13px; color: var(--text); }
+    .indicator-process-panel-search input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
+    .indicator-process-panel-search svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 15px; color: var(--muted); }
+    .indicator-process-panel-close { flex: 0 0 auto; width: 34px; height: 34px; border-radius: 9px; border: 1px solid var(--line-strong); background: var(--surface); color: var(--muted); display: grid; place-items: center; cursor: pointer; transition: background var(--ease), color var(--ease); }
+    .indicator-process-panel-close:hover { background: var(--surface-soft); color: var(--ink); }
+    .indicator-process-panel-close svg { width: 16px; height: 16px; }
+    .indicator-process-panel .indicator-process-tabs { max-height: 320px; overflow: auto; }
     .indicator-selected { border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface-soft); padding: 12px; display: grid; gap: 10px; }
     .indicator-selected-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
     .indicator-selected-head b { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
@@ -1293,6 +1313,9 @@
       filtroStatusPreenchimento: '',
       filtroMeusIndicadores: false,
       processosIndicadorSelecionados: [],
+      processoPanelOpen: false,
+      processoIndicadorBusca: '',
+      processoIndicadorAcessos: {},
       indicadorFiltroRecolhido: true,
       buscaIndicador: '',
       unidadeIndicadorSelecionada: '',
@@ -1455,6 +1478,15 @@
         };
         menuBtn.addEventListener('click', () => toggleSidebar());
         overlay.addEventListener('click', () => toggleSidebar(false));
+        // Fecha o painel flutuante de processos ao clicar fora dele.
+        document.addEventListener('click', e => {
+          if (!state.processoPanelOpen) return;
+          const shell = document.getElementById('indicatorProcessTabsShell');
+          if (shell && !shell.contains(e.target)) closeProcessoPanel();
+        });
+        document.addEventListener('keydown', e => {
+          if (e.key === 'Escape' && state.processoPanelOpen) closeProcessoPanel();
+        });
         document.getElementById('filtroBuscaIndicador').addEventListener('input', e => { state.buscaIndicador = e.target.value.trim(); renderIndicadores(); });
         document.getElementById('globalSearch').addEventListener('input', e => {
           state.search = e.target.value.toLowerCase().trim();
@@ -2448,17 +2480,69 @@
       if (termoBuscaLivre) rows = rows.filter(r => String(r.PROCESSO||'').toLowerCase().includes(termoBuscaLivre) || String(r.NOME_INDICADOR||'').toLowerCase().includes(termoBuscaLivre));
       const processosFiltrados = processos;
       const selecionados = state.processosIndicadorSelecionados || [];
-      const selectedHtml = selecionados.length ? `
-        <div class="indicator-selected">
-          <div class="indicator-selected-head"><b>Selecionados (${selecionados.length})</b><button class="indicator-clear-btn" onclick="clearProcessoIndicador()">Limpar seleção</button></div>
-          <div class="indicator-process-tabs">${selecionados.map(p => `<button class="indicator-chip state-selected" onclick="toggleProcessoIndicador('${escapeHtml(p)}')"><span class="indicator-chip-label">${escapeHtml(p)}</span><span class="indicator-chip-count">${processoCounts[p] || 0}</span></button>`).join('')}</div>
-        </div>` : '';
-      const processTabsHtml = processosFiltrados.length
-        ? processosFiltrados.map(p => `<button class="indicator-chip ${selecionados.includes(p) ? 'state-selected' : ''}" onclick="toggleProcessoIndicador('${escapeHtml(p)}')"><span class="indicator-chip-label">${escapeHtml(p)}</span><span class="indicator-chip-count">${processoCounts[p] || 0}</span></button>`).join('')
-        : '<span class="pill">Sem processos para os filtros atuais</span>';
+      const acessos = state.processoIndicadorAcessos || {};
+      const chipFor = (p) => `<button class="indicator-chip ${selecionados.includes(p) ? 'state-selected' : ''}" onclick="toggleProcessoIndicador('${escapeHtml(p)}')"><span class="indicator-chip-label">${escapeHtml(p)}</span><span class="indicator-chip-count">${processoCounts[p] || 0}</span></button>`;
+
+      // Ordem para o resumo minimizado: selecionados primeiro; caso contrário, mais acessados.
+      const naoSelecionados = processosFiltrados.filter(p => !selecionados.includes(p));
+      const maisAcessados = naoSelecionados.slice().sort((a, b) => {
+        const diff = (acessos[b] || 0) - (acessos[a] || 0);
+        if (diff !== 0) return diff;
+        const cnt = (processoCounts[b] || 0) - (processoCounts[a] || 0);
+        if (cnt !== 0) return cnt;
+        return a.localeCompare(b, 'pt-BR');
+      });
+      const resumoOrdenado = selecionados.length
+        ? [...selecionados, ...maisAcessados]
+        : maisAcessados;
+      const COMPACT_MAX = 3;
+      const compactChips = resumoOrdenado.slice(0, COMPACT_MAX);
+      const restantes = Math.max(processosFiltrados.length - compactChips.length, 0);
+
+      let compactHtml;
+      if (!processosFiltrados.length) {
+        compactHtml = '<span class="indicator-process-empty">Sem processos para os filtros atuais</span>';
+      } else {
+        compactHtml = compactChips.map(chipFor).join('');
+        if (restantes > 0) compactHtml += `<button class="indicator-process-more" onclick="event.stopPropagation();openProcessoPanel()" title="Ver mais ${restantes} processo(s)">+${restantes}</button>`;
+      }
+      const seeAllBtn = processosFiltrados.length
+        ? `<button class="indicator-process-seeall" onclick="event.stopPropagation();openProcessoPanel()"><svg viewBox="0 0 24 24" fill="none"><path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>Ver todos</button>`
+        : '';
+
+      // Painel flutuante (dropdown) com busca + lista completa.
+      let panelHtml = '';
+      if (state.processoPanelOpen) {
+        const termoProc = (state.processoIndicadorBusca || '').toLowerCase().trim();
+        const listaPainel = termoProc
+          ? processosFiltrados.filter(p => p.toLowerCase().includes(termoProc))
+          : processosFiltrados;
+        const tabsHtml = listaPainel.length
+          ? listaPainel.map(chipFor).join('')
+          : '<span class="indicator-process-empty">Nenhum processo encontrado para a busca.</span>';
+        const limparBtn = selecionados.length
+          ? `<button class="indicator-clear-btn" onclick="clearProcessoIndicador()">Limpar seleção</button>`
+          : '';
+        panelHtml = `
+          <div class="indicator-process-panel" id="indicatorProcessPanel" onclick="event.stopPropagation()">
+            <div class="indicator-process-panel-head">
+              <label class="indicator-process-panel-search"><svg viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.7"/><path d="M20 20l-3.6-3.6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg><input type="search" id="processoPanelBusca" placeholder="Buscar processo..." value="${escapeHtml(state.processoIndicadorBusca || '')}" oninput="setProcessoIndicadorBusca(this.value)"></label>
+              ${limparBtn}
+              <button class="indicator-process-panel-close" onclick="closeProcessoPanel()" aria-label="Fechar lista"><svg viewBox="0 0 24 24" fill="none"><path d="M18 6 6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+            </div>
+            <div class="indicator-process-tabs">${tabsHtml}</div>
+          </div>`;
+      }
+
       document.getElementById('indicatorProcessTabsShell').innerHTML = `
         <div class="indicator-process-head"><h4>Processos</h4><span class="indicator-process-count">${processos.length} itens</span></div>
-        <div class="indicator-process-body">${selectedHtml}<div class="indicator-process-tabs">${processTabsHtml}</div></div>`;
+        <div class="indicator-process-body"><div class="indicator-process-compact">${compactHtml}${seeAllBtn}</div></div>
+        ${panelHtml}`;
+
+      if (state.processoPanelOpen) {
+        const inp = document.getElementById('processoPanelBusca');
+        if (inp && document.activeElement !== inp) { const v = inp.value; inp.focus(); inp.setSelectionRange(v.length, v.length); }
+      }
 
       if (state.filtroStatusPreenchimento) {
         rows = rows.filter(ind => {
@@ -2575,8 +2659,26 @@ function getIndicatorUnit(ind) {
     function setIndicadorCategoria(v) { state.categoriaIndicadorSelecionada = v; renderIndicadores(); }
     function toggleProcessoIndicador(v) {
       const list = new Set(state.processosIndicadorSelecionados || []);
-      if (list.has(v)) list.delete(v); else list.add(v);
+      if (list.has(v)) {
+        list.delete(v);
+      } else {
+        list.add(v);
+        // Registra acesso para alimentar o resumo "mais acessados".
+        state.processoIndicadorAcessos = state.processoIndicadorAcessos || {};
+        state.processoIndicadorAcessos[v] = (state.processoIndicadorAcessos[v] || 0) + 1;
+      }
       state.processosIndicadorSelecionados = Array.from(list);
+      renderIndicadores();
+    }
+    function openProcessoPanel() {
+      state.processoPanelOpen = true;
+      state.processoIndicadorBusca = '';
+      renderIndicadores();
+    }
+    function closeProcessoPanel() {
+      if (!state.processoPanelOpen) return;
+      state.processoPanelOpen = false;
+      state.processoIndicadorBusca = '';
       renderIndicadores();
     }
     function toggleIndicadorFiltro() { state.indicadorFiltroRecolhido = !state.indicadorFiltroRecolhido; const shell=document.getElementById("indicatorFilterShell"); if(shell) shell.classList.toggle("is-hidden", state.indicadorFiltroRecolhido); const btn=document.getElementById("toggleFiltrosBtn"); if(btn) btn.setAttribute("aria-expanded", state.indicadorFiltroRecolhido ? "false" : "true"); }
