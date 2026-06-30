@@ -4801,16 +4801,28 @@ function getIndicatorUnit(ind) {
       bar.classList.toggle('active', ids.length > 0);
       bar.setAttribute('aria-hidden', ids.length > 0 ? 'false' : 'true');
     }
-    function bulkAvancarEtapa() {
+    async function bulkAvancarEtapa() {
       const ids = selectedBulkIds().filter(id => {
         const p = getById(state.data && state.data.processos, 'ID_PROCESSO', id);
         return p && processRank(p) < PROC_STAGES.length;
       });
       if (!ids.length) { showToast('Nenhum processo elegível selecionado.', 'warning'); return; }
+
+      // Confirmação antes de ação crítica
+      const procNomes = ids.map(id => {
+        const p = getById(state.data && state.data.processos, 'ID_PROCESSO', id);
+        return p ? p.PROCESSO : id;
+      }).join(', ');
+      const confirmed = await ui.dialog.confirm(
+        'Avançar ' + ids.length + ' processo(s) para a próxima etapa?\n\n' + procNomes,
+        'Confirmar avanço'
+      );
+      if (!confirmed) return;
+
       state.bulkSel = {};
       ids.forEach(avancarEtapaProcesso);
       updateBulkBar();
-      showToast('Avançando ' + ids.length + ' processo(s)...', 'info');
+      showToast('✓ Avançado ' + ids.length + ' processo(s)!', 'success');
     }
 
     /* ============================================================= */
