@@ -378,8 +378,9 @@
     .link-btn.danger { color: var(--danger); }
 
     /* =========================  Views & panels  ========================= */
-    .view { display: none; }
-    .view.active { display: block; }
+    .view { display: none; opacity: 0; }
+    .view.active { display: block; opacity: 1; animation: viewFadeIn 0.2s var(--ease-standard) forwards; }
+    @keyframes viewFadeIn { from { opacity: 0; } to { opacity: 1; } }
 
     .panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow-sm); overflow: clip; }
     .panel + .panel { margin-top: 20px; }
@@ -1352,7 +1353,14 @@
       chart: '<svg viewBox="0 0 24 24" fill="none"><path d="M5 19V9M12 19V5M19 19v-7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M3 19h18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>'
     };
 
-
+    // Debounce helper: aguarda 'ms' ms sem novos eventos antes de chamar 'fn'
+    function debounce(fn, ms = 300) {
+      let timeoutId;
+      return function(...args) {
+        clearTimeout(timeoutId);
+        timeoutId = setTimeout(() => fn.apply(this, args), ms);
+      };
+    }
 
     const asyncUi = {
       pending: 0,
@@ -1591,16 +1599,25 @@
         document.addEventListener('keydown', e => {
           if (e.key === 'Escape' && state.processoPanelOpen) closeProcessoPanel();
         });
-        document.getElementById('filtroBuscaIndicador').addEventListener('input', e => { state.buscaIndicador = e.target.value.trim(); renderIndicadores(); });
-        document.getElementById('globalSearch').addEventListener('input', e => {
+        // Busca de indicadores com debounce (300ms)
+        const debouncedRenderIndicadores = debounce(() => renderIndicadores(), 300);
+        const searchInput = document.getElementById('filtroBuscaIndicador');
+        if (searchInput) searchInput.addEventListener('input', e => { state.buscaIndicador = e.target.value.trim(); debouncedRenderIndicadores(); });
+
+        // Busca global com debounce (300ms) — evita render() a cada keystroke
+        const debouncedRender = debounce(() => render(), 300);
+        const globalSearch = document.getElementById('globalSearch');
+        if (globalSearch) globalSearch.addEventListener('input', e => {
           state.search = e.target.value.toLowerCase().trim();
-          render();
+          debouncedRender();
         });
+
+        // Filtros change (instant, sem debounce — user já escolheu valor)
         ['filtroStatusAcomp', 'filtroTipoProcesso', 'filtroCategoriaIndicador', 'filtroTipoIndicador', 'filtroTipoOperacionalIndicador', 'filtroEixoIndicador', 'filtroAnalistaIndicador', 'filtroGestorIndicador', 'filtroPeriodicidadeIndicador', 'filtroPeriodoIndicador', 'filtroCompetenciaIndicador', 'filtroStatusPreenchimento'].forEach(id => {
           const el = document.getElementById(id);
           if (el) el.addEventListener('change', e => {
             state[id] = e.target.value;
-            render();
+            renderIndicadores();  // Selective rendering em vez de render() global
           });
         });
         const meusInd = document.getElementById('filtroMeusIndicadores');
